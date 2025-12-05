@@ -1,4 +1,3 @@
-<!-- pages/forgot-password.vue -->
 <template>
   <div>
     <div class="auth-card">
@@ -24,7 +23,7 @@
               placeholder="请输入验证码"
               class="theme-input"
             />
-            <button type="button" class="code-btn" @click="getCode" :disabled="codeBtnDisabled">
+            <button type="button" class="code-btn" @click="getCode" :disabled="codeBtnDisabled || isSubmitting">
               {{ codeBtnText }}
             </button>
           </div>
@@ -37,7 +36,7 @@
               v-model="form.newPassword"
               placeholder="请输入新密码"
               class="theme-input"
-			  type="password"
+              type="password"
             />
           </div>
         </div>
@@ -49,15 +48,18 @@
               v-model="form.reNewPassword"
               placeholder="请再次输入新密码"
               class="theme-input"
-			  type="password"
+              type="password"
             />
           </div>
         </div>
 
         <!-- 按钮组 -->
         <div class="btn-group">
-          <button type="submit" class="confirm-btn">确定</button>
-          <button type="button" class="cancel-btn" @click="handleCancel">取消</button>
+          <button type="submit" class="confirm-btn" :disabled="isSubmitting">
+            <t-loading v-if="isSubmitting" size="small" />
+            <span v-else>确定</span>
+          </button>
+          <button type="button" class="cancel-btn" @click="handleCancel" :disabled="isSubmitting">取消</button>
         </div>
       </form>
     </div>
@@ -66,44 +68,146 @@
 
 <script setup>
 definePageMeta({ layout: 'auth' });
-import { ref } from 'vue';
-import { isPhoneValid, isPasswordValid, isCodeValid } from '~/utils/validate';
-import { navigateTo } from 'nuxt/app';
+import { ref, onMounted } from 'vue';
+import { navigateTo } from '#app';
+import * as loginApi from '@/apis/login';
 
-const form = ref({ phone: '', code: '', newPassword: '', reNewPassword: '' });
+// 初始化message兜底，避免undefined
+let message = {
+  error: (text) => alert(text),
+  success: (text) => alert(text)
+};
+
+const form = ref({ 
+  phone: '', 
+  code: '', 
+  newPassword: '', 
+  reNewPassword: '' 
+});
 const codeBtnText = ref('获取验证码');
 const codeBtnDisabled = ref(false);
+const isSubmitting = ref(false);
 
-const getCode = () => {
+// 客户端动态导入TDesign Message
+onMounted(async () => {
+  if (process.client) {
+    try {
+      const tdesign = await import('tdesign-vue-next');
+      if (tdesign?.Message && typeof tdesign.Message.error === 'function') {
+        message = tdesign.Message;
+      }
+    } catch (e) {
+      // 导入失败继续使用alert兜底
+    }
+  }
+});
+
+// 手机号校验规则
+const isPhoneValid = (phone) => {
+  const reg = /^1[3-9]\d{9}$/;
+  return reg.test(phone);
+};
+
+// 密码校验规则
+const isPasswordValid = (password) => {
+  const reg = /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{6,16}$/;
+  return reg.test(password);
+};
+
+// 验证码校验规则
+const isCodeValid = (code) => {
+  const reg = /^\d{6}$/;
+  return reg.test(code);
+};
+
+// 获取忘记密码验证码
+const getCode = async () => {
+  if (!process.client) return;
+
+  // 手机号校验
   if (!isPhoneValid(form.value.phone)) {
-    alert('请输入正确的手机号');
+    message.error('请输入正确的11位手机号');
     return;
   }
-  codeBtnDisabled.value = true;
-  codeBtnText.value = '60s后重发';
-  let count = 60;
-  const timer = setInterval(() => {
-    count--;
+
+  try {
+    codeBtnDisabled.value = true;
+    // 调用忘记密码验证码接口
+    await loginApi.getForgetPwdSmsCode({
+      phonenumber: form.value.phone,
+      userType: 1
+    });
+    message.success('验证码发送成功，请注意查收');
+    
+    // 倒计时逻辑
+    let count = 60;
     codeBtnText.value = `${count}s后重发`;
-    if (count <= 0) {
-      clearInterval(timer);
-      codeBtnText.value = '获取验证码';
-      codeBtnDisabled.value = false;
-    }
-  }, 1000);
+    const timer = setInterval(() => {
+      count--;
+      codeBtnText.value = `${count}s后重发`;
+      if (count <= 0) {
+        clearInterval(timer);
+        codeBtnText.value = '获取验证码';
+        codeBtnDisabled.value = false;
+      }
+    }, 1000);
+  } catch (error) {
+    message.error(error.message || '验证码发送失败，请重试');
+    codeBtnDisabled.value = false;
+  }
 };
 
-const handleConfirm = () => {
-  if (!isPhoneValid(form.value.phone)) { alert('请输入正确的手机号'); return; }
-  if (!isCodeValid(form.value.code)) { alert('请输入6位数字验证码'); return; }
-  if (!isPasswordValid(form.value.newPassword)) { alert('密码需6-16位，包含数字和字母'); return; }
-  if (form.value.newPassword !== form.value.reNewPassword) { alert('两次输入的新密码不一致'); return; }
+// 确认重置密码
+const handleConfirm = async () => {
+  if (!process.client) return;
+
+  // 表单校验
+  if (!isPhoneValid(form.value.phone)) {
+    message.error('请输入正确的11位手机号');
+    return;
+  }
   
-  alert('密码重置成功！请登录');
-  navigateTo('/login');
+  if (!isCodeValid(form.value.code)) {
+    message.error('请输入6位数字验证码');
+    return;
+  }
+  
+  if (!isPasswordValid(form.value.newPassword)) {
+    message.error('密码需6-16位，且包含字母和数字');
+    return;
+  }
+  
+  if (form.value.newPassword !== form.value.reNewPassword) {
+    message.error('两次输入的新密码不一致');
+    return;
+  }
+
+  try {
+    isSubmitting.value = true;
+    // 调用忘记密码接口
+    await loginApi.forgetPassword({
+      phoneNumber: form.value.phone,
+      smsCode: form.value.code,
+      newPassword: form.value.newPassword
+    });
+    
+    message.success('密码重置成功！请登录');
+    setTimeout(() => {
+      navigateTo('/login');
+    }, 1000);
+  } catch (error) {
+    message.error(error.message || '密码重置失败，请重试');
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 
-const handleCancel = () => navigateTo('/login');
+// 取消重置
+const handleCancel = () => {
+  if (!isSubmitting.value) {
+    navigateTo('/login');
+  }
+};
 </script>
 
 <style lang="scss" scoped>
@@ -118,18 +222,17 @@ const handleCancel = () => navigateTo('/login');
   box-sizing: border-box;
   margin: 0 auto;
   :deep(.t-input) {
-      height: 39px !important; // 加 !important 覆盖内置样式
+      height: 39px !important;
       border: none !important;
-      box-shadow: none !important; // 清空内置阴影
-      background: transparent !important; // 清空背景
+      box-shadow: none !important;
+      background: transparent !important;
   
-      // 穿透到输入框核心元素
       .t-input__inner {
         height: 100% !important;
         border: none !important;
         outline: none !important;
         box-shadow: none !important;
-        padding: 0 !important; // 清空内置内边距
+        padding: 0 !important;
         line-height: 1 !important;
       }
     }
@@ -158,7 +261,7 @@ const handleCancel = () => navigateTo('/login');
   padding: 0 15px;
   box-sizing: border-box;
   display: flex;
-  align-items: center; /* 强制垂直居中 */
+  align-items: center;
   justify-content: flex-start;
 }
 
@@ -181,7 +284,6 @@ const handleCancel = () => navigateTo('/login');
 
 /* 核心：清空t-input所有自带样式 */
 .theme-input {
-  /* 重置所有默认样式 */
   width: 100% !important;
   height: 100% !important;
   border: none !important;
@@ -194,25 +296,25 @@ const handleCancel = () => navigateTo('/login');
   font-size: 14px !important;
   color: #2F3032 !important;
   border-radius: 0 !important;
-  /* 占位符样式统一 */
+  
   ::-webkit-input-placeholder { color: #999 !important; }
   ::-moz-placeholder { color: #999 !important; }
   :-ms-input-placeholder { color: #999 !important; }
   ::placeholder { color: #999 !important; }
 }
 
-/* 验证码按钮：清空主题色边框，仅保留文字样式 */
+/* 验证码按钮 */
 .code-btn {
   width: 90px;
   height: 28px;
   background: transparent !important;
-  border: none !important; /* 清空边框 */
+  border: none !important;
   outline: none !important;
   box-shadow: none !important;
   color: #3799AE;
   font-size: 12px;
   cursor: pointer;
-  flex-shrink: 0; /* 不被挤压 */
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -242,9 +344,17 @@ const handleCancel = () => navigateTo('/login');
   font-weight: 500;
   cursor: pointer;
   transition: background .2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .confirm-btn:hover {
   background: #2d8094;
+}
+.confirm-btn:disabled {
+  background: #a8d0d8;
+  cursor: not-allowed;
 }
 .cancel-btn {
   width: 100px;
@@ -260,6 +370,11 @@ const handleCancel = () => navigateTo('/login');
 .cancel-btn:hover {
   border-color: #3799AE;
   color: #3799AE;
+}
+.cancel-btn:disabled {
+  border-color: #ECEEF2;
+  color: #999;
+  cursor: not-allowed;
 }
 
 /* 统一间距 */

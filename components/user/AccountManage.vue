@@ -1,8 +1,8 @@
 <template>
   <div class="account-manage">
-    <!-- 账号信息卡片（补全所有缺失内容） -->
+    <!-- 账号信息卡片 -->
     <div class="account-card">
-      <!-- 头像区域（点击可上传） -->
+      <!-- 头像区域 -->
       <div class="avatar-section">
         <span class="info-label">我的头像：</span>
         <div 
@@ -11,15 +11,12 @@
           @mouseleave="isAvatarHover = false"
           @click="triggerAvatarUpload"
         >
-          <img src="~/assets/images/user-avatar.png" alt="我的头像" class="avatar-img" />
-          <!-- hover蒙层 -->
+          <img :src="userInfo.avatar || '~/assets/images/user-avatar.png'" alt="我的头像" class="avatar-img" />
           <div class="avatar-mask" v-if="isAvatarHover">
             <img src="~/assets/images/upload.png" alt="上传图标" class="upload-icon" />
           </div>
-          <!-- 编辑图标 -->
           <img src="~/assets/images/edit.png" alt="编辑" class="edit-icon" @click.stop="triggerAvatarUpload" />
         </div>
-        <!-- 隐藏的文件上传框 -->
         <input 
           type="file" 
           ref="avatarInput" 
@@ -32,14 +29,13 @@
       <!-- 我的昵称 -->
       <div class="info-item">
         <span class="info-label">我的昵称：</span>
-        <span class="info-value">公司名称/姓名/136****5502</span>
-        <!-- <img src="~/assets/images/edit.png" alt="编辑" class="edit-icon" @click="openNicknameModal" /> -->
+        <span class="info-value">{{ userInfo.nickname || '未设置' }}</span>
       </div>
 
       <!-- 手机号码 -->
       <div class="info-item">
         <span class="info-label">手机号码：</span>
-        <span class="info-value">123456789</span>
+        <span class="info-value">{{ formatPhone(userInfo.phoneNumber) }}</span>
         <img src="~/assets/images/edit.png" alt="编辑" class="edit-icon" @click="openPhoneModal" />
       </div>
 
@@ -64,22 +60,29 @@
       <div class="form-item">
         <t-input 
           prefix="+86" 
+          v-model="phoneForm.newPhone"
           placeholder="请输入新手机号" 
           class="form-input"
+          :disabled="isPhoneSubmitting"
         />
       </div>
       <div class="form-item">
         <t-input 
+          v-model="phoneForm.smsCode"
           placeholder="请输入验证码" 
           class="form-input"
+          :disabled="isPhoneSubmitting || codeBtnDisabled"
         />
-        <!-- 优化：获取验证码改为文字样式（严格匹配UI要求） -->
-        <span class="verify-code-text" @click="getVerifyCode">获取验证码</span>
+        <span class="verify-code-text" @click="getPhoneCode" :class="{ disabled: codeBtnDisabled || isPhoneSubmitting }">
+          {{ codeBtnText }}
+        </span>
       </div>
       <template #footer>
-        <t-button theme="default" @click="phoneModalVisible = false">取消</t-button>
-        <!-- 优化：提交按钮强制主题色（覆盖TDesign默认蓝色） -->
-        <t-button class="submit-btn" @click="phoneModalVisible = false">提交</t-button>
+        <t-button theme="default" @click="phoneModalVisible = false" :disabled="isPhoneSubmitting">取消</t-button>
+        <t-button class="submit-btn" @click="submitUpdatePhone" :disabled="isPhoneSubmitting">
+          <t-loading v-if="isPhoneSubmitting" size="small" />
+          <span v-else>提交</span>
+        </t-button>
       </template>
     </t-dialog>
 
@@ -93,80 +96,333 @@
       <div class="form-item">
         <t-input 
           prefix="+86" 
-          value="1234567890" 
+          v-model="pwdForm.phoneNumber"
           disabled 
           class="form-input"
         />
       </div>
       <div class="form-item">
         <t-input 
+          v-model="pwdForm.smsCode"
           placeholder="请输入验证码" 
           class="form-input"
+          :disabled="isPwdSubmitting || pwdCodeBtnDisabled"
         />
-        <!-- 优化：获取验证码改为文字样式（严格匹配UI要求） -->
-        <span class="verify-code-text" @click="getVerifyCode">获取验证码</span>
+        <span class="verify-code-text" @click="getPwdCode" :class="{ disabled: pwdCodeBtnDisabled || isPwdSubmitting }">
+          {{ pwdCodeBtnText }}
+        </span>
       </div>
       <div class="form-item">
         <t-input 
           type="password" 
+          v-model="pwdForm.newPassword"
           placeholder="请输入新密码" 
           class="form-input"
+          :disabled="isPwdSubmitting"
         />
       </div>
       <div class="form-item">
         <t-input 
           type="password" 
+          v-model="pwdForm.confirmPassword"
           placeholder="请再次输入密码" 
           class="form-input"
+          :disabled="isPwdSubmitting"
         />
       </div>
       <template #footer>
-        <t-button theme="default" @click="pwdModalVisible = false">取消</t-button>
-        <!-- 优化：提交按钮强制主题色（覆盖TDesign默认蓝色） -->
-        <t-button class="submit-btn" @click="pwdModalVisible = false">提交</t-button>
+        <t-button theme="default" @click="pwdModalVisible = false" :disabled="isPwdSubmitting">取消</t-button>
+        <t-button class="submit-btn" @click="submitUpdatePwd" :disabled="isPwdSubmitting">
+          <t-loading v-if="isPwdSubmitting" size="small" />
+          <span v-else>提交</span>
+        </t-button>
       </template>
     </t-dialog>
   </div>
 </template>
 
 <script setup>
-import { Dialog, Input, Button } from 'tdesign-vue-next';
-import { ref } from 'vue';
+import { Dialog, Input, Button, Loading, Message } from 'tdesign-vue-next';
+import { ref, reactive, onMounted } from 'vue';
+import { navigateTo, useRequest } from '#imports'; // 显式导入 Nuxt 组合式函数
+import { getUserApi } from '@/apis/user';
+
+// 初始化 API 实例（关键：在 setup 中调用 getUserApi，确保 useRequest 上下文正确）
+const userApi = getUserApi();
 
 // 头像相关状态
 const isAvatarHover = ref(false);
 const avatarInput = ref(null);
+const isAvatarUploading = ref(false);
+
+// 用户信息
+const userInfo = reactive({
+  avatar: '',
+  nickname: '',
+  phoneNumber: ''
+});
 
 // 弹窗显示状态
 const phoneModalVisible = ref(false);
 const pwdModalVisible = ref(false);
-const nicknameModalVisible = ref(false); // 昵称修改弹窗（预留）
-
-// 弹窗主题配置（辅助统一主题）
 const dialogTheme = ref({ primaryColor: '#3799AE' });
 
-// 头像上传逻辑
+// 修改手机号表单
+const phoneForm = reactive({
+  newPhone: '',
+  smsCode: ''
+});
+const codeBtnText = ref('获取验证码');
+const codeBtnDisabled = ref(false);
+const isPhoneSubmitting = ref(false);
+
+// 修改密码表单
+const pwdForm = reactive({
+  phoneNumber: '',
+  smsCode: '',
+  newPassword: '',
+  confirmPassword: ''
+});
+const pwdCodeBtnText = ref('获取验证码');
+const pwdCodeBtnDisabled = ref(false);
+const isPwdSubmitting = ref(false);
+
+// 初始化 Message（直接使用 TDesign 组件，避免动态导入的上下文问题）
+const showMessage = (type, text) => {
+  Message[type]({
+    content: text,
+    duration: 3000
+  });
+};
+
+// 页面挂载时获取用户信息
+onMounted(async () => {
+  await fetchUserInfo();
+});
+
+// 获取用户信息
+const fetchUserInfo = async () => {
+  try {
+    const res = await userApi.getUserProfile();
+    if (res?.data) {
+      userInfo.avatar = res.data.avatar;
+      userInfo.nickname = res.data.nickname;
+      userInfo.phoneNumber = res.data.phoneNumber;
+      pwdForm.phoneNumber = res.data.phoneNumber;
+    }
+  } catch (error) {
+    showMessage('error', '获取用户信息失败');
+  }
+};
+
+// 格式化手机号（138****1234）
+const formatPhone = (phone) => {
+  if (!phone) return '未绑定';
+  return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+};
+
+// 手机号校验
+const isPhoneValid = (phone) => {
+  const reg = /^1[3-9]\d{9}$/;
+  return reg.test(phone);
+};
+
+// 密码校验
+const isPasswordValid = (password) => {
+  const reg = /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{6,16}$/;
+  return reg.test(password);
+};
+
+// 头像上传
 const triggerAvatarUpload = () => {
+  if (isAvatarUploading.value) return;
   avatarInput.value.click();
 };
-const handleAvatarUpload = (e) => {
+
+const handleAvatarUpload = async (e) => {
   const file = e.target.files[0];
-  if (file) {
-    console.log('上传的头像文件：', file);
-    // 可添加实际上传接口逻辑
-    avatarInput.value.value = ''; // 重置输入框
+  if (!file) return;
+  
+  // 校验文件大小（2MB）
+  if (file.size > 2 * 1024 * 1024) {
+    showMessage('error', '头像文件大小不能超过2MB');
+    return;
+  }
+
+  try {
+    isAvatarUploading.value = true;
+    // 调用上传头像接口
+    const res = await userApi.updateUserAvatar({
+      file,
+      onProgress: (progress) => {
+        console.log('上传进度：', progress);
+      }
+    });
+    
+    if (res?.data) {
+      showMessage('success', '头像修改成功');
+      userInfo.avatar = res.data.avatarUrl;
+    }
+  } catch (error) {
+    showMessage('error', error.message || '头像上传失败，请重试');
+  } finally {
+    isAvatarUploading.value = false;
+    avatarInput.value.value = '';
+  }
+};
+
+// 获取修改手机号验证码
+const getPhoneCode = async () => {
+  if (!isPhoneValid(phoneForm.newPhone)) {
+    showMessage('error', '请输入有效的11位手机号');
+    return;
+  }
+
+  try {
+    codeBtnDisabled.value = true;
+    codeBtnText.value = '60s后重发';
+    
+    // 调用获取验证码接口（此处需补充实际接口）
+    // await userApi.getSmsCode({ phoneNumber: phoneForm.newPhone, type: 'updatePhone' });
+    showMessage('success', '验证码发送成功');
+    
+    let count = 60;
+    const timer = setInterval(() => {
+      count--;
+      codeBtnText.value = `${count}s后重发`;
+      if (count <= 0) {
+        clearInterval(timer);
+        codeBtnText.value = '获取验证码';
+        codeBtnDisabled.value = false;
+      }
+    }, 1000);
+  } catch (error) {
+    showMessage('error', error.message || '验证码发送失败');
+    codeBtnDisabled.value = false;
+    codeBtnText.value = '获取验证码';
+  }
+};
+
+// 提交修改手机号
+const submitUpdatePhone = async () => {
+  if (!isPhoneValid(phoneForm.newPhone)) {
+    showMessage('error', '请输入有效的11位手机号');
+    return;
+  }
+  
+  if (!phoneForm.smsCode || phoneForm.smsCode.length !== 6) {
+    showMessage('error', '请输入6位数字验证码');
+    return;
+  }
+
+  try {
+    isPhoneSubmitting.value = true;
+    // 调用修改手机号接口
+    await userApi.updateUserPhone({
+      phoneNumber: phoneForm.newPhone,
+      smsCode: phoneForm.smsCode
+    });
+    
+    showMessage('success', '手机号修改成功，请重新登录');
+    setTimeout(() => {
+      phoneModalVisible.value = false;
+      // 退出登录并跳转登录页（实际项目中需补充退出登录逻辑）
+      navigateTo('/login');
+    }, 1500);
+  } catch (error) {
+    showMessage('error', error.message || '手机号修改失败，请重试');
+  } finally {
+    isPhoneSubmitting.value = false;
+  }
+};
+
+// 获取修改密码验证码
+const getPwdCode = async () => {
+  if (!pwdForm.phoneNumber) {
+    showMessage('error', '手机号不能为空');
+    return;
+  }
+
+  try {
+    pwdCodeBtnDisabled.value = true;
+    pwdCodeBtnText.value = '60s后重发';
+    
+    // 调用获取验证码接口（此处需补充实际接口）
+    // await userApi.getSmsCode({ phoneNumber: pwdForm.phoneNumber, type: 'updatePassword' });
+    showMessage('success', '验证码发送成功');
+    
+    let count = 60;
+    const timer = setInterval(() => {
+      count--;
+      pwdCodeBtnText.value = `${count}s后重发`;
+      if (count <= 0) {
+        clearInterval(timer);
+        pwdCodeBtnText.value = '获取验证码';
+        pwdCodeBtnDisabled.value = false;
+      }
+    }, 1000);
+  } catch (error) {
+    showMessage('error', error.message || '验证码发送失败');
+    pwdCodeBtnDisabled.value = false;
+    pwdCodeBtnText.value = '获取验证码';
+  }
+};
+
+// 提交修改密码
+const submitUpdatePwd = async () => {
+  if (!pwdForm.smsCode || pwdForm.smsCode.length !== 6) {
+    showMessage('error', '请输入6位数字验证码');
+    return;
+  }
+  
+  if (!isPasswordValid(pwdForm.newPassword)) {
+    showMessage('error', '密码需6-16位，且包含字母和数字');
+    return;
+  }
+  
+  if (pwdForm.newPassword !== pwdForm.confirmPassword) {
+    showMessage('error', '两次输入的密码不一致');
+    return;
+  }
+
+  try {
+    isPwdSubmitting.value = true;
+    // 调用修改密码接口
+    await userApi.updateUserPassword({
+      phoneNumber: pwdForm.phoneNumber,
+      smsCode: pwdForm.smsCode,
+      newPassword: pwdForm.newPassword
+    });
+    
+    showMessage('success', '密码修改成功，请重新登录');
+    setTimeout(() => {
+      pwdModalVisible.value = false;
+      // 退出登录并跳转登录页
+      navigateTo('/login');
+    }, 1500);
+  } catch (error) {
+    showMessage('error', error.message || '密码修改失败，请重试');
+  } finally {
+    isPwdSubmitting.value = false;
   }
 };
 
 // 弹窗打开逻辑
-const openPhoneModal = () => phoneModalVisible.value = true;
-const openPwdModal = () => pwdModalVisible.value = true;
-const openNicknameModal = () => nicknameModalVisible.value = true;
+const openPhoneModal = () => {
+  phoneForm.newPhone = '';
+  phoneForm.smsCode = '';
+  codeBtnText.value = '获取验证码';
+  codeBtnDisabled.value = false;
+  phoneModalVisible.value = true;
+};
 
-// 获取验证码逻辑
-const getVerifyCode = () => {
-  console.log('点击获取验证码');
-  // 可添加倒计时、接口调用等逻辑
+const openPwdModal = () => {
+  pwdForm.smsCode = '';
+  pwdForm.newPassword = '';
+  pwdForm.confirmPassword = '';
+  pwdCodeBtnText.value = '获取验证码';
+  pwdCodeBtnDisabled.value = false;
+  pwdModalVisible.value = true;
 };
 </script>
 
@@ -175,11 +431,9 @@ const getVerifyCode = () => {
   width: 100%;
   height: 100%;
 
-  // 账号卡片样式
   .account-card {
     padding: 24px;
 
-    // 头像区域
     .avatar-section {
       display: flex;
       align-items: center;
@@ -237,7 +491,6 @@ const getVerifyCode = () => {
       }
     }
 
-    // 信息项通用样式
     .info-item {
       display: flex;
       align-items: center;
@@ -252,18 +505,16 @@ const getVerifyCode = () => {
       .info-value {
         color: #333;
         margin-right: 10px;
-        // flex: 1;
       }
 
       .edit-icon {
-		margin-left: 60px;
+        margin-left: 60px;
         width: 16px;
         height: 16px;
         cursor: pointer;
       }
     }
 
-    // 退出登录按钮
     .logout-btn {
       background: #3799AE;
       color: #fff;
@@ -280,7 +531,6 @@ const getVerifyCode = () => {
     }
   }
 
-  // 1. 获取验证码文字样式（严格匹配UI要求）
   .verify-code-text {
     font-size: 14px !important;
     font-weight: normal !important;
@@ -289,14 +539,19 @@ const getVerifyCode = () => {
     color: #3799AE !important;
     cursor: pointer;
     padding: 0 5px;
-    // hover效果优化
+
     &:hover {
       color: #2d8094 !important;
-      text-decoration: underline; // 可选：增加hover下划线，更符合文字按钮交互
+      text-decoration: underline;
+    }
+
+    &.disabled {
+      color: #999 !important;
+      cursor: not-allowed;
+      text-decoration: none;
     }
   }
 
-  // 2. 提交按钮主题色样式（强制覆盖TDesign默认蓝色）
   .submit-btn {
     background: #3799AE !important;
     border-color: #3799AE !important;
@@ -304,13 +559,16 @@ const getVerifyCode = () => {
     font-size: 14px;
     padding: 0 16px;
     height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
 
     &:hover {
       background: #2d8094 !important;
       border-color: #2d8094 !important;
     }
 
-    // 禁用状态（可选，增加鲁棒性）
     &:disabled {
       background: #99c4cf !important;
       border-color: #99c4cf !important;
@@ -318,7 +576,6 @@ const getVerifyCode = () => {
     }
   }
 
-  // 表单项样式
   .form-item {
     margin-bottom: 15px;
     display: flex;
@@ -328,7 +585,7 @@ const getVerifyCode = () => {
     .form-input {
       flex: 1;
       height: 36px;
-      // 输入框边框主题色适配
+
       :deep(.t-input__inner) {
         border-color: #ECEEF2;
         &:focus {
@@ -339,7 +596,6 @@ const getVerifyCode = () => {
     }
   }
 
-  // 弹窗样式适配
   :deep(.t-dialog__header) {
     border-bottom: 1px solid #ECEEF2;
     padding-bottom: 12px;

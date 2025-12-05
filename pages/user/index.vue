@@ -19,8 +19,15 @@
         <aside class="user-sidebar">
           <!-- 头像+账号名称 -->
           <div class="user-avatar-wrap">
-            <img src="~/assets/images/user-avatar.png" alt="用户头像" class="user-avatar" />
-            <p class="account-name">账号名称</p>
+            <!-- 核心：优先使用Store中的头像，无则使用默认头像 -->
+            <img 
+              :src="userAvatar" 
+              alt="用户头像" 
+              class="user-avatar" 
+              @error="handleAvatarError"
+            />
+            <!-- 核心：优先使用Store中的昵称/手机号，无则显示默认文本 -->
+            <p class="account-name">{{ userName || '账号名称' }}</p>
           </div>
           <!-- 分割线 -->
           <div class="menu-divider"></div>
@@ -54,8 +61,10 @@
 <script setup>
 import Header from '~/components/common/Header.vue';
 import Footer from '~/components/common/Footer.vue';
-import { Breadcrumb, BreadcrumbItem } from 'tdesign-vue-next';
-import { ref, computed } from 'vue';
+import { Breadcrumb, BreadcrumbItem, Message } from 'tdesign-vue-next';
+import { ref, computed, onMounted } from 'vue';
+import { useUserStore } from '@/stores/user';
+import { navigateTo } from '#app';
 
 // 子内容组件
 import AccountManage from '~/components/user/AccountManage.vue';
@@ -64,6 +73,9 @@ import OrderManage from '~/components/user/OrderManage.vue';
 import AddressManage from '~/components/user/AddressManage.vue';
 import InvoiceManage from '~/components/user/InvoiceManage.vue';
 import CreditManage from '~/components/user/CreditManage.vue';
+
+// 初始化用户Store
+const userStore = useUserStore();
 
 // 菜单数组
 const menuList = ref([
@@ -90,6 +102,75 @@ const componentMap = {
 
 // 动态组件
 const currentComponent = computed(() => componentMap[activeMenu.value] || AccountManage);
+
+// ========== 核心：从Store获取用户信息 ==========
+/**
+ * 计算用户头像（优先使用Store中的头像，无则使用默认头像）
+ */
+const userAvatar = computed(() => {
+  // 1. Store中有头像且有效，使用Store中的头像
+  if (userStore.userInfo?.avatar && userStore.userInfo.avatar.trim()) {
+    return userStore.userInfo.avatar;
+  }
+  // 2. 否则使用默认头像
+  return '/images/user-avatar.png'; // Nuxt中~/会被解析为根目录，直接用/assets更稳定
+});
+
+/**
+ * 计算用户名称（优先显示真实姓名，其次手机号，最后空）
+ */
+const userName = computed(() => {
+  if (!userStore.userInfo) return '';
+  
+  // 1. 优先显示真实姓名
+  if (userStore.userInfo.realName && userStore.userInfo.realName.trim()) {
+    return userStore.userInfo.realName;
+  }
+  // 2. 其次显示手机号（脱敏处理）
+  if (userStore.phone) {
+    return userStore.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+  }
+  // 3. 无信息则返回空
+  return '';
+});
+
+// ========== 辅助方法 ==========
+/**
+ * 头像加载失败时的处理（兜底显示默认头像）
+ */
+const handleAvatarError = (e) => {
+  // e.target.src = '/images/user-avatar.png';
+  e.target.src = '';
+};
+
+/**
+ * 页面挂载时校验登录状态
+ */
+onMounted(() => {
+  // 客户端环境下校验
+  if (process.client) {
+    // 未登录则跳转到登录页
+    if (!userStore.isLoggedIn()) {
+      Message.warning('请先登录');
+      navigateTo({
+        path: '/login',
+        query: { redirect: '/user-center' } // 登录后跳转回个人中心
+      });
+      return;
+    }
+
+    // 已登录但用户信息不完整，尝试重新获取
+    if (userStore.isLoggedIn() && !userStore.userInfo?.realName && !userStore.phone) {
+      Message.info('正在加载用户信息...');
+      // 可扩展：重新调用获取用户信息接口
+      // userStore.initUserInfo({ token: userStore.token }).catch(() => {
+      //   Message.error('用户信息加载失败，请重新登录');
+      //   userStore.logout();
+      //   navigateTo('/login');
+      // });
+    }
+  }
+});
 </script>
 
 <style lang="scss" scoped>
@@ -133,11 +214,14 @@ const currentComponent = computed(() => componentMap[activeMenu.value] || Accoun
         border-radius: 50%;
         object-fit: cover;
         margin-bottom: 8px;
+        // 增加边框，提升视觉效果
+        border: 1px solid #ECEEF2;
       }
 
       .account-name {
         font-size: 14px;
         color: #333;
+        margin: 0; // 清除默认margin
       }
     }
 

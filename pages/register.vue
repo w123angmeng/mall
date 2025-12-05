@@ -3,58 +3,35 @@
     <div class="auth-card">
       <div class="page-title text-center mb-md">注册</div>
 
-      <form class="register-form" @submit.prevent="handleRegister">
-        <!-- 手机号输入 -->
+      <form class="register-form" @submit.prevent="handleRegister" novalidate>
         <div class="form-group mb-md">
           <div class="input-container phone-input">
             <div class="country-code">+86</div>
-            <t-input
-              v-model="form.phone"
-              placeholder="请输入手机号"
-              class="theme-input"
-            />
+            <t-input v-model="form.phone" placeholder="请输入手机号" class="theme-input" />
           </div>
         </div>
 
-        <!-- 验证码输入 -->
         <div class="form-group mb-md">
           <div class="input-container code-input">
-            <t-input
-              v-model="form.code"
-              placeholder="请输入验证码"
-              class="theme-input"
-            />
-            <button type="button" class="code-btn" @click="getCode" :disabled="codeBtnDisabled">
+            <t-input v-model="form.code" placeholder="请输入验证码" class="theme-input" />
+            <button type="button" class="code-btn" @click="getCode" :disabled="codeBtnDisabled || !isPhoneValid(form.phone)">
               {{ codeBtnText }}
             </button>
           </div>
         </div>
 
-        <!-- 密码输入 -->
         <div class="form-group mb-md">
           <div class="input-container password-input">
-            <t-input
-              v-model="form.password"
-              placeholder="请输入密码"
-              class="theme-input"
-              type="password"
-            />
+            <t-input v-model="form.password" placeholder="请输入密码" class="theme-input" type="password" />
           </div>
         </div>
 
-        <!-- 再次输入密码 -->
         <div class="form-group mb-md">
           <div class="input-container password-input">
-            <t-input
-              v-model="form.rePassword"
-              placeholder="请再次输入密码"
-              class="theme-input"
-              type="password"
-            />
+            <t-input v-model="form.rePassword" placeholder="请再次输入密码" class="theme-input" type="password" />
           </div>
         </div>
 
-        <!-- 协议勾选 -->
         <div class="agreement mb-md flex-center">
           <t-checkbox v-model="form.agreement" size="small" />
           <span class="text-sm ml-sm">
@@ -65,17 +42,11 @@
           </span>
         </div>
 
-        <!-- 注册按钮 -->
-        <button 
-          type="submit" 
-          class="confirm-btn w-full"
-          :disabled="!form.agreement || isSubmitting"
-        >
+        <button type="submit" class="confirm-btn w-full" :disabled="!form.agreement || isSubmitting">
           <t-loading v-if="isSubmitting" size="small" />
           <span v-else>注册</span>
         </button>
 
-        <!-- 登录链接 -->
         <div class="login-link text-center mt-md">
           <span class="text-secondary">已有账号？</span>
           <NuxtLink to="/login" class="agreement-link">立即登录</NuxtLink>
@@ -87,16 +58,17 @@
 
 <script setup>
 definePageMeta({ layout: 'auth' });
-import { ref } from 'vue';
-import { useMessage } from 'tdesign-vue-next';
-import { navigateTo, useRoute } from '#app';
+
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { navigateTo, useRoute, useNuxtApp } from '#app';
+import { useUserStore } from '@/stores/user'; // 导入用户Store
 import * as loginApi from '@/apis/login';
 
-const message = useMessage();
+const nuxtApp = useNuxtApp();
 const route = useRoute();
+const userStore = useUserStore(); // 初始化用户Store
 const isSubmitting = ref(false);
 
-// 表单状态
 const form = ref({
   phone: '',
   code: '',
@@ -105,107 +77,191 @@ const form = ref({
   agreement: false
 });
 
-// 验证码倒计时
 const codeBtnText = ref('获取验证码');
 const codeBtnDisabled = ref(false);
+let countdownTimer = null;
+let countdown = 0;
 
-// 手机号校验规则
+const messageRef = ref(null);
+const getMessageInstance = async () => {
+  if (nuxtApp?.$message) {
+    messageRef.value = nuxtApp.$message;
+    return messageRef.value;
+  }
+  if (process.client) {
+    try {
+      const mod = await import('tdesign-vue-next');
+      const useMessage = mod?.useMessage || (mod?.default && mod.default.useMessage);
+      if (typeof useMessage === 'function') {
+        const inst = useMessage();
+        messageRef.value = inst;
+        if (nuxtApp?.vueApp?.config) {
+          nuxtApp.vueApp.config.globalProperties.$message = inst;
+        }
+        return inst;
+      }
+    } catch (e) {}
+  }
+  return undefined;
+};
+
 const isPhoneValid = (phone) => {
-  const reg = /^1[3-9]\d{9}$/;
-  return reg.test(phone);
+  if (!phone) return false;
+  return /^1[3-9]\d{9}$/.test(String(phone).trim());
 };
-
-// 验证码校验规则
 const isCodeValid = (code) => {
-  const reg = /^\d{6}$/;
-  return reg.test(code);
+  if (!code) return false;
+  return /^\d{6}$/.test(String(code).trim());
 };
-
-// 密码校验规则
 const isPasswordValid = (password) => {
-  const reg = /^(?=.*[a-zA-Z])(?=.*\d)[a-zA-Z\d]{6,16}$/;
-  return reg.test(password);
+  if (!password) return false;
+  return /^(?=.*[a-zA-Z])(?=.*\d)[A-Za-z\d]{6,16}$/.test(String(password));
 };
 
-// 获取验证码
+onMounted(() => {
+  getMessageInstance().catch(() => {});
+});
+
+onBeforeUnmount(() => {
+  if (countdownTimer) clearInterval(countdownTimer);
+});
+
 const getCode = async () => {
-  // 手机号格式校验
+  const message = messageRef.value ?? (await getMessageInstance());
   if (!isPhoneValid(form.value.phone)) {
-    message.error('请输入正确的11位手机号');
+    message?.error?.('请输入正确的11位手机号');
     return;
   }
-
+  if (codeBtnDisabled.value) return;
   try {
-    // 调用获取注册验证码接口
-    await loginApi.getRegisterSmsCode({ phoneNumber: form.value.phone });
-    message.success('验证码发送成功，请注意查收');
-
-    // 开启倒计时
     codeBtnDisabled.value = true;
-    let count = 60;
-    codeBtnText.value = `${count}s后重发`;
-    
-    const timer = setInterval(() => {
-      count--;
-      codeBtnText.value = `${count}s后重发`;
-      if (count <= 0) {
-        clearInterval(timer);
+    await loginApi.getRegisterSmsCode({ phoneNumber: form.value.phone });
+    message?.success?.('验证码发送成功，请注意查收');
+    countdown = 60;
+    codeBtnText.value = `${countdown}s后重发`;
+    countdownTimer = setInterval(() => {
+      countdown--;
+      if (countdown <= 0) {
+        clearInterval(countdownTimer);
+        countdownTimer = null;
         codeBtnText.value = '获取验证码';
         codeBtnDisabled.value = false;
+      } else {
+        codeBtnText.value = `${countdown}s后重发`;
       }
     }, 1000);
-  } catch (error) {
-    message.error(error.message || '验证码发送失败，请重试');
+  } catch (err) {
+    const errMsg = err?.message || '验证码发送失败，请重试';
+    message?.error?.(errMsg);
     codeBtnDisabled.value = false;
+    codeBtnText.value = '获取验证码';
   }
 };
 
-// 注册逻辑
+/**
+ * 自动登录并初始化用户信息
+ * @returns {Promise<boolean>} 是否成功
+ */
+const autoLoginAndInitUser = async (message) => {
+  try {
+    // 1. 调用登录接口（验证码登录，因为注册时用户还没设置密码登录的习惯）
+    const loginResult = await loginApi.login({
+      phoneNumber: form.value.phone,
+      smsCode: form.value.code, // 复用注册验证码（后端需支持验证码有效期内复用）
+      grantType: 'code' // 验证码登录类型
+    });
+
+    // 2. 初始化用户信息（调用Store方法）
+    const initSuccess = await userStore.initUserInfo({
+      token: loginResult.token,
+      refreshToken: loginResult.refreshToken || '',
+      phone: form.value.phone
+    });
+
+    if (initSuccess) {
+      return true;
+    } else {
+      message?.error?.('用户信息获取失败，请手动登录');
+      return false;
+    }
+  } catch (loginErr) {
+    // 登录失败处理（比如验证码过期，改用密码登录）
+    try {
+      const passwordLoginResult = await loginApi.login({
+        phoneNumber: form.value.phone,
+        password: form.value.password,
+        grantType: 'password'
+      });
+
+      const initSuccess = await userStore.initUserInfo({
+        token: passwordLoginResult.token,
+        refreshToken: passwordLoginResult.refreshToken || '',
+        phone: form.value.phone
+      });
+
+      return initSuccess;
+    } catch (passwordErr) {
+      message?.error?.(`自动登录失败：${passwordErr.message || '请手动登录'}`);
+      return false;
+    }
+  }
+};
+
 const handleRegister = async () => {
+  const message = messageRef.value ?? (await getMessageInstance());
+  
   // 基础校验
   if (!form.value.agreement) {
-    message.error('请阅读并同意用户协议和隐私协议');
+    message?.error?.('请阅读并同意用户协议和隐私协议');
     return;
   }
-
   if (!isPhoneValid(form.value.phone)) {
-    message.error('请输入正确的11位手机号');
+    message?.error?.('请输入正确的11位手机号');
     return;
   }
-
   if (!isCodeValid(form.value.code)) {
-    message.error('请输入6位数字验证码');
+    message?.error?.('请输入6位数字验证码');
     return;
   }
-
   if (!isPasswordValid(form.value.password)) {
-    message.error('密码需6-16位，且包含字母和数字');
+    message?.error?.('密码需6-16位，且包含字母和数字');
     return;
   }
-
   if (form.value.password !== form.value.rePassword) {
-    message.error('两次输入的密码不一致');
+    message?.error?.('两次输入的密码不一致');
     return;
   }
 
   try {
-    // 提交注册请求
     isSubmitting.value = true;
-    const res = await loginApi.register({
+    
+    // 1. 调用注册接口
+    await loginApi.register({
       phoneNumber: form.value.phone,
       smsCode: form.value.code,
       password: form.value.password
     });
 
-    message.success('注册成功，即将跳转到登录页');
+    message?.success?.('注册成功，正在为您自动登录...');
+
+    // 2. 核心：自动登录并初始化用户信息
+    const loginSuccess = await autoLoginAndInitUser(message);
     
-    // 获取跳转地址，优先使用redirect参数，否则跳转到首页
-    const redirect = route.query.redirect || '/';
-    setTimeout(() => {
-      navigateTo(redirect);
-    }, 1500);
-  } catch (error) {
-    message.error(error.message || '注册失败，请重试');
+    if (loginSuccess) {
+      // 3. 登录成功：跳转到认证选择页
+      message?.success?.('登录成功，即将跳转到认证选择页');
+      setTimeout(() => {
+        navigateTo('/select-auth'); // 跳转到认证选择页
+      }, 1200);
+    } else {
+      // 自动登录失败：跳转到登录页
+      setTimeout(() => {
+        navigateTo('/login?phone=' + encodeURIComponent(form.value.phone));
+      }, 1200);
+    }
+  } catch (err) {
+    const errMsg = err?.message || '注册失败，请重试';
+    message?.error?.(errMsg);
   } finally {
     isSubmitting.value = false;
   }

@@ -15,9 +15,10 @@
             :accept="['image/jpeg', 'image/png']"
             list-type="picture-card"
             :show-upload-list="false"
+            @change="handleUploadChange('front')"
           >
             <div class="upload-content">
-    				<img src="~/assets/images/upload.png"/>
+              <img src="~/assets/images/upload.png"/>
               <div class="upload-text">证件正面照片</div>
             </div>
           </t-upload>
@@ -31,9 +32,10 @@
             :accept="['image/jpeg', 'image/png']"
             list-type="picture-card"
             :show-upload-list="false"
+            @change="handleUploadChange('back')"
           >
             <div class="upload-content">
-    				<img src="~/assets/images/upload.png"/>
+              <img src="~/assets/images/upload.png"/>
               <div class="upload-text">证件反面照片</div>
             </div>
           </t-upload>
@@ -43,12 +45,13 @@
     </div>
     
     <!-- 表单区域 -->
-    <form class="auth-form">
+    <form class="auth-form" @submit.prevent="handleSubmit">
       <!-- 身份证姓名 -->
       <div class="form-group mb-md">
         <t-input
           v-model="form.idName"
           placeholder="自动识别姓名"
+          :disabled="isSubmitting"
         />
       </div>
     
@@ -57,6 +60,7 @@
         <t-input
           v-model="form.idNumber"
           placeholder="自动识别身份证号"
+          :disabled="isSubmitting"
         />
       </div>
     
@@ -67,12 +71,13 @@
           type="daterange"
           placeholder="开始日期 — 结束日期"
           class="date-picker"
-          :disabled="form.isLongTerm"
+          :disabled="form.isLongTerm || isSubmitting"
         />
         <t-radio
           v-model="form.isLongTerm"
           label="true"
           class="long-term-radio"
+          :disabled="isSubmitting"
         >
           长期有效
         </t-radio>
@@ -83,6 +88,7 @@
         <t-input
           v-model="form.businessName"
           placeholder="请输入对接产业业务姓名"
+          :disabled="isSubmitting"
         />
       </div>
     
@@ -91,63 +97,235 @@
         <t-input
           v-model="form.tradeIntention"
           placeholder="请输入交易意向"
+          :disabled="isSubmitting"
         />
       </div>
     
       <!-- 按钮组 -->
       <div class="btn-group">
-        <button type="button" class="confirm-btn" @click="handleSubmit">提交</button>
-        <button type="button" class="cancel-btn" @click="handleCancel">取消</button>
+        <button type="button" class="confirm-btn" @click="handleSubmit" :disabled="isSubmitting">
+          <t-loading v-if="isSubmitting" size="small" />
+          <span v-else>提交</span>
+        </button>
+        <button type="button" class="cancel-btn" @click="handleCancel" :disabled="isSubmitting">取消</button>
       </div>
     
       <!-- 跳过链接 -->
-      <a href="/" class="skip-link text-center">跳过个人认证</a>
+      <a href="/" class="skip-link text-center" @click.prevent="handleSkip">跳过个人认证</a>
     </form>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { navigateTo } from 'nuxt/app';
-// 正确导入TDesign组件
-import { Input, DatePicker, Radio, Upload } from 'tdesign-vue-next';
+import { ref, reactive, watch, onMounted } from 'vue';
+import { navigateTo, useNuxtApp } from '#app';
+import { Input, DatePicker, Radio, Upload, Loading, Message } from 'tdesign-vue-next';
 
-// 上传文件状态
-const uploadFiles = ref({
-  license: [] // 营业执照
+// 定义接收父组件传值
+const props = defineProps({
+  // 从AuthManage.vue传递的用户基础信息
+  userInfo: {
+    type: Object,
+    default: () => ({
+      nickname: '',
+      phoneNumber: ''
+    })
+  },
+  // 已有的认证信息（编辑场景）
+  authInfo: {
+    type: Object,
+    default: () => ({})
+  }
 });
 
-// 表单数据
-const form = ref({
-  enterpriseName: '', // 企业名称
-  registeredCapital: '', // 注册资本
-  socialCreditCode: '', // 统一社会信用代码
-  legalPersonName: '', // 法人姓名
-  legalPersonId: '', // 法人身份证号
-  contactName: '', // 联系人姓名
-  contactPhone: '', // 联系人手机号
+// 定义事件发射
+const emit = defineEmits(['submit', 'cancel', 'skip']);
+
+// Nuxt App 实例
+const nuxtApp = useNuxtApp();
+
+// 加载状态
+const isSubmitting = ref(false);
+
+// 上传文件状态（修正原有错误的license字段）
+const uploadFiles = ref({
+  front: [], // 身份证正面
+  back: []   // 身份证背面
+});
+
+// 表单数据（修正原有错误的企业相关字段，改为个人认证字段）
+const form = reactive({
+  idName: '', // 身份证姓名
+  idNumber: '', // 身份证号
   validDate: [], // 有效期范围
   isLongTerm: false, // 是否长期有效
   businessName: '', // 产业业务姓名
   tradeIntention: '' // 交易意向
 });
 
-// // 提交认证
-// const handleSubmit = () => {
-//   // 实际项目中可添加表单验证逻辑
-//   alert('企业认证提交成功！');
-//   navigateTo('/'); // 提交后跳转首页
-// };
+// 初始化Message提示
+const showMessage = (type, text) => {
+  if (nuxtApp.$message) {
+    nuxtApp.$message[type]({
+      content: text,
+      duration: 3000
+    });
+  } else {
+    Message[type]({
+      content: text,
+      duration: 3000
+    });
+  }
+};
 
-// // 取消（返回选择认证页面）
-// const handleCancel = () => {
-//   navigateTo('/select-auth');
-// };
+// 页面挂载时初始化表单值
+onMounted(() => {
+  // 1. 优先使用已有认证信息初始化（编辑场景）
+  if (props.authInfo) {
+    form.idName = props.authInfo.idName || '';
+    form.idNumber = props.authInfo.idNumber || '';
+    form.validDate = props.authInfo.validDate || [];
+    form.isLongTerm = props.authInfo.isLongTerm || false;
+    form.businessName = props.authInfo.businessName || '';
+    form.tradeIntention = props.authInfo.tradeIntention || '';
+    
+    // 初始化上传文件（如有）
+    if (props.authInfo.frontImg) uploadFiles.value.front = [{ url: props.authInfo.frontImg }];
+    if (props.authInfo.backImg) uploadFiles.value.back = [{ url: props.authInfo.backImg }];
+  } 
+  // 2. 其次使用用户昵称填充身份证姓名（新增场景）
+  else if (props.userInfo?.nickname) {
+    form.idName = props.userInfo.nickname;
+    // 可选项：用手机号填充业务联系人
+    form.businessName = props.userInfo.nickname;
+  }
+});
 
-// 提交/取消（通过emit通知父组件）
-const emit = defineEmits(['submit', 'cancel']);
-const handleSubmit = () => emit('submit', formData.value);
-const handleCancel = () => emit('cancel');
+// 监听长期有效选项，清空有效期
+watch(() => form.isLongTerm, (val) => {
+  if (val) {
+    form.validDate = [];
+  }
+});
+
+// 身份证号校验规则
+const validateIdNumber = (idCard) => {
+  if (!idCard) return false;
+  // 18位身份证正则
+  const reg = /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/;
+  return reg.test(idCard);
+};
+
+// 上传文件变化处理
+const handleUploadChange = (type) => {
+  // 可在这里添加文件上传前的校验逻辑
+  const files = uploadFiles.value[type];
+  if (files.length > 0) {
+    const file = files[0];
+    // 校验文件大小（双重保障，与组件max-size一致）
+    if (file.size && file.size > 10 * 1024 * 1024) {
+      showMessage('error', `${type === 'front' ? '身份证正面' : '身份证背面'}图片大小不能超过10MB`);
+      uploadFiles.value[type] = [];
+    }
+  }
+};
+
+// 表单整体校验
+const validateForm = () => {
+  // 1. 校验身份证照片
+  if (uploadFiles.value.front.length === 0) {
+    showMessage('error', '请上传身份证正面照片');
+    return false;
+  }
+  if (uploadFiles.value.back.length === 0) {
+    showMessage('error', '请上传身份证背面照片');
+    return false;
+  }
+
+  // 2. 校验身份证姓名
+  if (!form.idName || form.idName.trim() === '') {
+    showMessage('error', '请填写身份证姓名');
+    return false;
+  }
+
+  // 3. 校验身份证号
+  if (!form.idNumber || form.idNumber.trim() === '') {
+    showMessage('error', '请填写身份证号');
+    return false;
+  }
+  if (!validateIdNumber(form.idNumber.trim())) {
+    showMessage('error', '请填写有效的18位身份证号');
+    return false;
+  }
+
+  // 4. 校验有效期
+  if (!form.isLongTerm && (!form.validDate || form.validDate.length !== 2)) {
+    showMessage('error', '请选择身份证有效期或勾选长期有效');
+    return false;
+  }
+
+  // 5. 校验产业业务姓名
+  if (!form.businessName || form.businessName.trim() === '') {
+    showMessage('error', '请填写对接产业业务姓名');
+    return false;
+  }
+
+  // 6. 校验交易意向
+  if (!form.tradeIntention || form.tradeIntention.trim() === '') {
+    showMessage('error', '请填写交易意向');
+    return false;
+  }
+
+  return true;
+};
+
+// 提交认证
+const handleSubmit = async () => {
+  // 1. 表单校验
+  if (!validateForm()) return;
+
+  try {
+    isSubmitting.value = true;
+    
+    // 2. 构造提交数据
+    const submitData = {
+      ...form,
+      // 处理上传文件（实际项目中需替换为文件上传后的URL）
+      frontImg: uploadFiles.value.front[0]?.url || '',
+      backImg: uploadFiles.value.back[0]?.url || '',
+      // 处理长期有效
+      isLongTerm: form.isLongTerm === 'true' || form.isLongTerm === true
+    };
+
+    // 3. 发射提交事件给父组件
+    emit('submit', submitData);
+
+    // 提示成功（可由父组件接管提示）
+    showMessage('success', '个人认证提交成功，等待审核');
+    
+    // 4. 提交成功后跳转（可由父组件控制）
+    setTimeout(() => {
+      navigateTo('/user');
+    }, 1500);
+
+  } catch (error) {
+    showMessage('error', error.message || '个人认证提交失败，请重试');
+  } finally {
+    isSubmitting.value = false;
+  }
+};
+
+// 取消（返回选择认证页面）
+const handleCancel = () => {
+  emit('cancel');
+  navigateTo('/select-auth');
+};
+
+// 跳过认证
+const handleSkip = () => {
+  emit('skip');
+  navigateTo('/');
+};
 </script>
 
 <style lang="scss" scoped>

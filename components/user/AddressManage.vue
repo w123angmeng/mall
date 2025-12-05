@@ -1,20 +1,25 @@
 <template>
   <div class="address-manage">
+    <!-- 加载状态 -->
+    <div v-if="isLoading" class="loading-state">
+      <t-loading size="large" />
+    </div>
+    
     <!-- 收货地址列表 -->
-    <div class="address-list" v-if="addressList.length">
+    <div class="address-list" v-else-if="addressList.length">
       <!-- 地址卡片 -->
       <div class="address-item" v-for="(item, idx) in addressList" :key="item.id">
         <!-- 卡片头（显示收货人 + 默认标签） -->
         <div class="card-header">
           <div class="default-tag" v-if="item.isDefault">默认</div>
-          <div class="receiver-name">{{ item.receiver }}</div>
+          <div class="receiver-name">{{ item.realName }}</div>
         </div>
 
         <!-- 卡片内容区（地址信息） -->
         <div class="card-content">
           <div class="info-item">
             <span class="info-label">所在地区：</span>
-            <span class="info-value">{{ item.region }}</span>
+            <span class="info-value">{{ item.province }} {{ item.city }} {{ item.district }} {{ item.street }}</span>
           </div>
           <div class="info-item">
             <span class="info-label">地址：</span>
@@ -23,6 +28,10 @@
           <div class="info-item">
             <span class="info-label">手机号码：</span>
             <span class="info-value">{{ item.phone }}</span>
+          </div>
+          <div class="info-item" v-if="item.requirement">
+            <span class="info-label">收货要求：</span>
+            <span class="info-value">{{ item.requirement }}</span>
           </div>
         </div>
 
@@ -53,146 +62,404 @@
     </div>
 
     <!-- 添加/编辑地址弹窗（复选框优化） -->
-    <t-dialog v-model:visible="addressDialogVisible" header="添加收货地址" width="500px">
+    <t-dialog v-model:visible="addressDialogVisible" :header="currentAddress.id ? '编辑收货地址' : '添加收货地址'" width="500px">
       <div class="address-form">
         <!-- 姓名 + 电话（一行双列） -->
         <div class="form-row">
           <t-input 
-            v-model="currentAddress.receiver" 
+            v-model="currentAddress.realName" 
             placeholder="请输入姓名" 
             class="form-item"
+            :disabled="isSubmitting"
           />
           <t-input 
             v-model="currentAddress.phone" 
             placeholder="请输入电话" 
             class="form-item"
+            :disabled="isSubmitting"
           />
         </div>
 
-        <!-- 地区选择 -->
-        <t-select 
-          v-model="currentAddress.region" 
-          placeholder="请选择省/市/区/街道" 
-          class="form-item full-width"
-          :options="regionOptions"
-        />
+        <!-- 地区选择（级联选择优化） -->
+        <div class="region-selector form-item full-width">
+          <t-select 
+            v-model="provinceValue" 
+            placeholder="请选择省份" 
+            class="region-select"
+            @change="handleProvinceChange"
+            :disabled="isSubmitting"
+          >
+            <t-option v-for="item in provinceList" :key="item.id" :label="item.name" :value="item.id" />
+          </t-select>
+          <t-select 
+            v-model="cityValue" 
+            placeholder="请选择城市" 
+            class="region-select"
+            @change="handleCityChange"
+            :disabled="!provinceValue || isSubmitting"
+          >
+            <t-option v-for="item in cityList" :key="item.id" :label="item.name" :value="item.id" />
+          </t-select>
+          <t-select 
+            v-model="districtValue" 
+            placeholder="请选择区县" 
+            class="region-select"
+            @change="handleDistrictChange"
+            :disabled="!cityValue || isSubmitting"
+          >
+            <t-option v-for="item in districtList" :key="item.id" :label="item.name" :value="item.id" />
+          </t-select>
+          <t-select 
+            v-model="streetValue" 
+            placeholder="请选择街道" 
+            class="region-select"
+            :disabled="!districtValue || isSubmitting"
+          >
+            <t-option v-for="item in streetList" :key="item.id" :label="item.name" :value="item.id" />
+          </t-select>
+        </div>
 
         <!-- 详细地址 -->
         <t-input 
           v-model="currentAddress.detail" 
           placeholder="请输入详情地址" 
           class="form-item full-width"
+          :disabled="isSubmitting"
         />
 
         <!-- 特殊要求 -->
         <t-input 
-          v-model="currentAddress.remark" 
+          v-model="currentAddress.requirement" 
           placeholder="特殊要求" 
           class="form-item full-width"
+          :disabled="isSubmitting"
         />
 
-        <!-- 🔥 核心修改：设为默认改为复选框 -->
+        <!-- 设为默认复选框 -->
         <div class="default-option">
-          <t-checkbox v-model="currentAddress.isDefault">设为默认</t-checkbox>
+          <t-checkbox v-model="currentAddress.isDefault" :disabled="isSubmitting">设为默认</t-checkbox>
         </div>
       </div>
 
       <template #footer>
-        <t-button theme="default" @click="addressDialogVisible = false">取消</t-button>
-        <t-button theme="primary" @click="handleAddressSubmit">提交</t-button>
+        <t-button theme="default" @click="addressDialogVisible = false" :disabled="isSubmitting">取消</t-button>
+        <t-button theme="primary" @click="handleAddressSubmit" :loading="isSubmitting">提交</t-button>
       </template>
     </t-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-// 🔥 替换Radio为Checkbox
-import { Button, Dialog, Input, Select, Checkbox } from 'tdesign-vue-next';
+import { ref, reactive, onMounted, watch } from 'vue';
+import { Button, Dialog, Input, Select, Checkbox, Loading, Message, Icon, Option } from 'tdesign-vue-next';
 
-// 收货地址列表数据
-const addressList = ref([
-  {
-    id: 1,
-    receiver: '张三三',
-    region: '四川省成都市高新区街道名称',
-    detail: '小区名称具体信息',
-    phone: '1234567890',
-    isDefault: true,
-    remark: ''
-  },
-  {
-    id: 2,
-    receiver: '公司名称信息名称信息',
-    region: '四川省成都市高新区街道名称',
-    detail: '小区名称具体信息',
-    phone: '1234567890',
-    isDefault: false,
-    remark: ''
-  }
-]);
+// 修复apis/address.js的Nuxt上下文问题，封装为函数
+const getAddressApi = () => {
+  const { get, post, put, delete: del } = useRequest();
+  
+  return {
+    getAreaListByParentId: async (params) => await get('/area/list', params),
+    getProvinces: async () => await get('/area/provinces'),
+    getCities: async (params) => await get('/area/cities', params),
+    getDistricts: async (params) => await get('/area/districts', params),
+    getStreets: async (params) => await get('/area/streets', params),
+    addAddress: async (data) => await post('/address/add', data),
+    updateAddress: async (data) => await put('/address/update', data),
+    deleteAddress: async (addressId) => await del(`/address/delete/${addressId}`),
+    getAddressList: async () => await get('/address/list'),
+    getAddressDetail: async (addressId) => await get(`/address/detail/${addressId}`),
+    getDefaultAddress: async () => await get('/address/default')
+  };
+};
 
-// 地区选择下拉选项（示例）
-const regionOptions = ref([
-  { label: '四川省成都市高新区街道名称', value: '四川省成都市高新区街道名称' },
-  { label: '北京市朝阳区街道名称', value: '北京市朝阳区街道名称' }
-]);
+// 初始化地址API实例
+const addressApi = getAddressApi();
 
-// 弹窗状态 + 当前编辑地址
+// 基础状态管理
+const isLoading = ref(false);
+const isSubmitting = ref(false);
+const addressList = ref([]);
 const addressDialogVisible = ref(false);
-const currentAddress = ref({
+
+// 地区选择相关
+const provinceList = ref([]);
+const cityList = ref([]);
+const districtList = ref([]);
+const streetList = ref([]);
+const provinceValue = ref('');
+const cityValue = ref('');
+const districtValue = ref('');
+const streetValue = ref('');
+
+// 当前编辑地址表单
+const currentAddress = reactive({
   id: '',
-  receiver: '',
+  realName: '',
   phone: '',
-  region: '',
+  province: '',
+  provinceId: '',
+  city: '',
+  cityId: '',
+  district: '',
+  districtId: '',
+  street: '',
+  streetId: '',
   detail: '',
-  isDefault: false, // 布尔值适配复选框
-  remark: ''
+  requirement: '',
+  isDefault: false
 });
 
-// 打开地址弹窗（新增/编辑）
-const openAddressDialog = (data) => {
-  if (data) {
-    currentAddress.value = { ...data };
-  } else {
-    currentAddress.value = {
-      id: '',
-      receiver: '',
-      phone: '',
-      region: '',
-      detail: '',
-      isDefault: false,
-      remark: ''
-    };
+// 页面挂载时加载地址列表和省份数据
+onMounted(async () => {
+  await fetchAddressList();
+  await fetchProvinces();
+});
+
+// 监听省份变化加载城市
+watch(provinceValue, async (val) => {
+  if (val) {
+    await fetchCities(val);
+    // 重置下级选择
+    cityValue.value = '';
+    districtValue.value = '';
+    streetValue.value = '';
+    cityList.value = [];
+    districtList.value = [];
+    streetList.value = [];
   }
+});
+
+// 监听城市变化加载区县
+watch(cityValue, async (val) => {
+  if (val) {
+    await fetchDistricts(val);
+    // 重置下级选择
+    districtValue.value = '';
+    streetValue.value = '';
+    districtList.value = [];
+    streetList.value = [];
+  }
+});
+
+// 监听区县变化加载街道
+watch(districtValue, async (val) => {
+  if (val) {
+    await fetchStreets(val);
+    // 重置下级选择
+    streetValue.value = '';
+    streetList.value = [];
+  }
+});
+
+// ========== 接口调用逻辑 ==========
+// 获取地址列表
+const fetchAddressList = async () => {
+  try {
+    isLoading.value = true;
+    const res = await addressApi.getAddressList();
+    addressList.value = res?.data || [];
+  } catch (error) {
+    Message.error('获取收货地址列表失败');
+    console.error(error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 获取省份列表
+const fetchProvinces = async () => {
+  try {
+    const res = await addressApi.getProvinces();
+    provinceList.value = res?.data || [];
+  } catch (error) {
+    Message.error('获取省份列表失败');
+    console.error(error);
+  }
+};
+
+// 获取城市列表
+const fetchCities = async (provinceId) => {
+  try {
+    const res = await addressApi.getCities({ provinceId });
+    cityList.value = res?.data || [];
+  } catch (error) {
+    Message.error('获取城市列表失败');
+    console.error(error);
+  }
+};
+
+// 获取区县列表
+const fetchDistricts = async (cityId) => {
+  try {
+    const res = await addressApi.getDistricts({ cityId });
+    districtList.value = res?.data || [];
+  } catch (error) {
+    Message.error('获取区县列表失败');
+    console.error(error);
+  }
+};
+
+// 获取街道列表
+const fetchStreets = async (districtId) => {
+  try {
+    const res = await addressApi.getStreets({ districtId });
+    streetList.value = res?.data || [];
+  } catch (error) {
+    Message.error('获取街道列表失败');
+    console.error(error);
+  }
+};
+
+// ========== 表单操作逻辑 ==========
+// 打开地址弹窗
+const openAddressDialog = async (data) => {
+  // 重置表单
+  Object.assign(currentAddress, {
+    id: '',
+    realName: '',
+    phone: '',
+    province: '',
+    provinceId: '',
+    city: '',
+    cityId: '',
+    district: '',
+    districtId: '',
+    street: '',
+    streetId: '',
+    detail: '',
+    requirement: '',
+    isDefault: false
+  });
+  
+  // 重置地区选择器
+  provinceValue.value = '';
+  cityValue.value = '';
+  districtValue.value = '';
+  streetValue.value = '';
+  
+  // 编辑模式
+  if (data) {
+    Object.assign(currentAddress, data);
+    // 回显地区选择
+    provinceValue.value = data.provinceId;
+    if (data.provinceId) await fetchCities(data.provinceId);
+    cityValue.value = data.cityId;
+    if (data.cityId) await fetchDistricts(data.cityId);
+    districtValue.value = data.districtId;
+    if (data.districtId) await fetchStreets(data.districtId);
+    streetValue.value = data.streetId;
+  }
+  
   addressDialogVisible.value = true;
 };
 
-// 提交地址（新增/编辑）
-const handleAddressSubmit = () => {
-  // 若设为默认，取消其他地址的默认状态
-  if (currentAddress.value.isDefault) {
-    addressList.value = addressList.value.map(addr => ({
-      ...addr,
-      isDefault: addr.id === currentAddress.value.id // 仅当前地址设为默认
-    }));
+// 表单校验
+const validateAddressForm = () => {
+  // 姓名校验
+  if (!currentAddress.realName.trim()) {
+    Message.error('请输入收货人姓名');
+    return false;
   }
   
-  if (currentAddress.value.id) {
-    const index = addressList.value.findIndex(item => item.id === currentAddress.value.id);
-    addressList.value[index] = { ...currentAddress.value };
-  } else {
-    addressList.value.push({
-      ...currentAddress.value,
-      id: Date.now()
-    });
+  // 手机号校验
+  const phoneReg = /^1[3-9]\d{9}$/;
+  if (!phoneReg.test(currentAddress.phone.trim())) {
+    Message.error('请输入有效的11位手机号码');
+    return false;
   }
-  addressDialogVisible.value = false;
+  
+  // 地区校验
+  if (!provinceValue.value) {
+    Message.error('请选择省份');
+    return false;
+  }
+  if (!cityValue.value) {
+    Message.error('请选择城市');
+    return false;
+  }
+  if (!districtValue.value) {
+    Message.error('请选择区县');
+    return false;
+  }
+  if (!streetValue.value) {
+    Message.error('请选择街道');
+    return false;
+  }
+  
+  // 详细地址校验
+  if (!currentAddress.detail.trim()) {
+    Message.error('请输入详细地址');
+    return false;
+  }
+  
+  return true;
+};
+
+// 提交地址
+const handleAddressSubmit = async () => {
+  if (!validateAddressForm()) return;
+  
+  try {
+    isSubmitting.value = true;
+    
+    // 组装地址数据
+    const addressData = {
+      ...currentAddress,
+      provinceId: provinceValue.value,
+      cityId: cityValue.value,
+      districtId: districtValue.value,
+      streetId: streetValue.value,
+      // 获取地区名称
+      province: provinceList.value.find(item => item.id === provinceValue.value)?.name || '',
+      city: cityList.value.find(item => item.id === cityValue.value)?.name || '',
+      district: districtList.value.find(item => item.id === districtValue.value)?.name || '',
+      street: streetList.value.find(item => item.id === streetValue.value)?.name || ''
+    };
+    
+    if (addressData.id) {
+      // 修改地址
+      await addressApi.updateAddress(addressData);
+      Message.success('地址修改成功');
+    } else {
+      // 添加新地址
+      await addressApi.addAddress(addressData);
+      Message.success('地址添加成功');
+    }
+    
+    // 关闭弹窗并刷新列表
+    addressDialogVisible.value = false;
+    await fetchAddressList();
+  } catch (error) {
+    Message.error(error.message || '地址操作失败');
+    console.error(error);
+  } finally {
+    isSubmitting.value = false;
+  }
 };
 
 // 删除地址
-const deleteAddress = (item) => {
-  addressList.value = addressList.value.filter(addr => addr.id !== item.id);
+const deleteAddress = async (item) => {
+  try {
+    await addressApi.deleteAddress(item.id);
+    Message.success('地址删除成功');
+    await fetchAddressList();
+  } catch (error) {
+    Message.error(error.message || '地址删除失败');
+    console.error(error);
+  }
+};
+
+// 地区选择器事件处理
+const handleProvinceChange = async (val) => {
+  await fetchCities(val);
+};
+
+const handleCityChange = async (val) => {
+  await fetchDistricts(val);
+};
+
+const handleDistrictChange = async (val) => {
+  await fetchStreets(val);
 };
 </script>
 
@@ -201,6 +468,14 @@ const deleteAddress = (item) => {
   width: 100%;
   min-height: 500px;
   padding: 0 10px;
+
+  // 加载状态
+  .loading-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 300px;
+  }
 
   // 地址列表
   .address-list {
@@ -382,6 +657,25 @@ const deleteAddress = (item) => {
       }
     }
 
+    // 地区级联选择器样式
+    .region-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      
+      .region-select {
+        flex: 1;
+        
+        :deep(.t-select__inner) {
+          border-color: #ECEEF2;
+          &:focus {
+            border-color: #3799AE;
+            box-shadow: 0 0 0 2px rgba(55, 153, 174, 0.1);
+          }
+        }
+      }
+    }
+
     .form-item {
       margin-bottom: 16px;
 
@@ -399,7 +693,7 @@ const deleteAddress = (item) => {
       width: 100%;
     }
 
-    // 🔥 核心优化：复选框主题色样式
+    // 复选框主题色样式
     .default-option {
       margin-bottom: 20px;
       :deep(.t-checkbox) {

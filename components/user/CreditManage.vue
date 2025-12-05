@@ -1,7 +1,12 @@
 <template>
   <div class="credit-manage">
+    <!-- 加载状态 -->
+    <div v-if="isLoading" class="loading-state">
+      <t-loading size="large" />
+    </div>
+    
     <!-- 授信情况卡片列表（保持原样式） -->
-    <div class="credit-list" v-if="creditList.length">
+    <div class="credit-list" v-else-if="creditList.length">
       <div class="credit-item" v-for="(item, idx) in creditList" :key="item.id">
         <div class="card-header">
           <div class="company-name">{{ item.companyName }}</div>
@@ -17,7 +22,7 @@
           </div>
           <div class="info-item">
             <span class="info-label">授信额度：</span>
-            <span class="info-value credit-limit">{{ item.creditLimit }}</span>
+            <span class="info-value credit-limit">{{ formatAmount(item.creditLimit) }}</span>
           </div>
         </div>
         <div class="card-divider"></div>
@@ -29,11 +34,12 @@
         </div>
       </div>
     </div>
+    
     <div class="empty-state" v-else>
       <div class="empty-text">暂无授信信息</div>
     </div>
 
-    <!-- 🔥 优化后：匹配UI图的授信详情弹窗 -->
+    <!-- 授信详情弹窗 -->
     <t-dialog v-model:visible="creditDialogVisible" header="授信情况" width="600px">
       <div class="credit-detail">
         <!-- 1. 基础信息行（企业名称+统一信用代码） -->
@@ -52,14 +58,14 @@
         <div class="credit-section">
           <div class="section-header">
             <span class="section-title">授信额度</span>
-            <span class="section-value">{{ currentCredit.creditLimit }}</span>
+            <span class="section-value">{{ formatAmount(currentCredit.creditLimit) }}</span>
           </div>
           <div class="section-table">
             <table>
               <tbody>
                 <tr>
                   <td class="table-label">已用额度</td>
-                  <td class="table-value">{{ currentCredit.usedLimit }}</td>
+                  <td class="table-value">{{ formatAmount(currentCredit.usedLimit) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -70,14 +76,14 @@
         <div class="credit-section">
           <div class="section-header">
             <span class="section-title">授信帐期</span>
-            <span class="section-value">下单后2个月内付款</span>
+            <span class="section-value">下单后{{ currentCredit.creditPeriod }}内付款</span>
           </div>
           <div class="section-table scrollable-table">
             <table>
               <tbody>
                 <tr v-for="(bill, i) in currentCredit.billInfo" :key="i">
                   <td class="table-label">{{ bill.period }}</td>
-                  <td class="table-value">{{ bill.amount }}</td>
+                  <td class="table-value">{{ formatAmount(bill.amount) }}</td>
                   <td class="table-time">{{ bill.payTime }}</td>
                 </tr>
               </tbody>
@@ -90,42 +96,32 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { Button, Dialog, Icon } from 'tdesign-vue-next';
+import { ref, reactive, onMounted } from 'vue';
+import { Button, Dialog, Icon, Loading, Message } from 'tdesign-vue-next';
 
-// 授信情况列表数据（保持原结构）
-const creditList = ref([
-  {
-    id: 1,
-    companyName: '公司名称信息名称信息',
-    creditCode: '1234567890',
-    creditPeriod: '2个月',
-    creditLimit: '¥500000.00',
-    usedLimit: '¥1250.00',
-    billInfo: [
-      { period: '已有帐期', amount: '¥1250.00', payTime: '2025.12.20前付款' },
-      { period: '已有帐期', amount: '¥1250.00', payTime: '2025.12.20前付款' },
-      { period: '已有帐期', amount: '¥1250.00', payTime: '2025.12.20前付款' },
-      { period: '已有帐期', amount: '¥1250.00', payTime: '2025.12.20前付款' },
-      { period: '已有帐期', amount: '¥1250.00', payTime: '2025.12.20前付款' }
-    ]
-  },
-  {
-    id: 2,
-    companyName: '公司名称名称信息',
-    creditCode: '1234567890',
-    creditPeriod: '2个月',
-    creditLimit: '¥500000.00元',
-    usedLimit: '¥1250.00',
-    billInfo: [
-      { period: '已有帐期', amount: '¥1250.00', payTime: '2025.12.20前付款' }
-    ]
-  }
-]);
+// 封装API函数，适配Nuxt上下文
+const getCreditApi = () => {
+  const { get } = useRequest();
+  
+  return {
+    // 获取授信列表
+    getCreditList: async () => await get('/credit/list'),
+    // 获取授信详情
+    getCreditDetail: async (creditId) => await get(`/credit/detail/${creditId}`)
+  };
+};
 
-// 弹窗状态 + 当前查看的授信信息
+// 初始化API实例
+const creditApi = getCreditApi();
+
+// 基础状态管理
+const isLoading = ref(false);
+const creditList = ref([]);
 const creditDialogVisible = ref(false);
-const currentCredit = ref({
+
+// 当前查看的授信信息
+const currentCredit = reactive({
+  id: '',
   companyName: '',
   creditCode: '',
   creditPeriod: '',
@@ -134,10 +130,134 @@ const currentCredit = ref({
   billInfo: []
 });
 
+// 页面挂载时加载授信列表
+onMounted(async () => {
+  await fetchCreditList();
+});
+
+// ========== 工具函数 ==========
+// 金额格式化（统一格式为 ¥xxx.00）
+const formatAmount = (amount) => {
+  if (!amount) return '¥0.00';
+  
+  // 移除已有符号和单位，保留数字
+  const numStr = amount.toString().replace(/[^\d.]/g, '');
+  const num = parseFloat(numStr) || 0;
+  
+  // 格式化为带¥的两位小数
+  return `¥${num.toFixed(2)}`;
+};
+
+// 校验统一社会信用代码
+const validateCreditCode = (code) => {
+  const creditReg = /^[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}$/;
+  return creditReg.test(code);
+};
+
+// 校验金额格式
+const validateAmount = (amount) => {
+  const amountReg = /^\d+(\.\d{1,2})?$/;
+  return amountReg.test(amount.toString().replace(/[^\d.]/g, ''));
+};
+
+// ========== 接口调用逻辑 ==========
+// 获取授信列表
+const fetchCreditList = async () => {
+  try {
+    isLoading.value = true;
+    const res = await creditApi.getCreditList();
+    
+    // 数据校验和格式化
+    if (res?.data && Array.isArray(res.data)) {
+      creditList.value = res.data.map(item => {
+        // 基础数据校验
+        if (!item.companyName) {
+          Message.warning(`ID为${item.id}的授信信息缺少企业名称`);
+        }
+        if (!validateCreditCode(item.creditCode)) {
+          Message.warning(`ID为${item.id}的企业统一信用代码格式异常`);
+        }
+        if (!validateAmount(item.creditLimit)) {
+          Message.warning(`ID为${item.id}的授信额度格式异常`);
+        }
+        
+        return {
+          ...item,
+          // 确保金额字段有默认值
+          creditLimit: item.creditLimit || 0,
+          usedLimit: item.usedLimit || 0,
+          // 确保帐期字段有默认值
+          creditPeriod: item.creditPeriod || '2个月',
+          // 确保账单信息为数组
+          billInfo: Array.isArray(item.billInfo) ? item.billInfo : []
+        };
+      });
+    }
+  } catch (error) {
+    Message.error('获取授信信息失败，请稍后重试');
+    console.error('获取授信列表失败：', error);
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 获取授信详情
+const fetchCreditDetail = async (creditId) => {
+  try {
+    isLoading.value = true;
+    const res = await creditApi.getCreditDetail(creditId);
+    
+    if (res?.data) {
+      // 数据校验
+      if (!validateCreditCode(res.data.creditCode)) {
+        Message.warning('企业统一信用代码格式异常');
+      }
+      if (!validateAmount(res.data.creditLimit)) {
+        Message.warning('授信额度格式异常');
+      }
+      
+      return res.data;
+    }
+    return null;
+  } catch (error) {
+    Message.error('获取授信详情失败');
+    console.error('获取授信详情失败：', error);
+    return null;
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// ========== 交互逻辑 ==========
 // 打开授信详情弹窗
-const openCreditDialog = (data) => {
-  currentCredit.value = { ...data };
-  creditDialogVisible.value = true;
+const openCreditDialog = async (data) => {
+  try {
+    // 重置当前授信信息
+    Object.assign(currentCredit, {
+      id: '',
+      companyName: '',
+      creditCode: '',
+      creditPeriod: '',
+      creditLimit: '',
+      usedLimit: '',
+      billInfo: []
+    });
+    
+    // 优先从接口获取最新详情
+    const detailData = await fetchCreditDetail(data.id);
+    
+    if (detailData) {
+      Object.assign(currentCredit, detailData);
+    } else {
+      // 接口失败时使用本地缓存数据
+      Object.assign(currentCredit, data);
+    }
+    
+    creditDialogVisible.value = true;
+  } catch (error) {
+    Message.error('加载授信详情失败');
+    console.error(error);
+  }
 };
 </script>
 
@@ -146,6 +266,14 @@ const openCreditDialog = (data) => {
   width: 100%;
   min-height: 500px;
   padding: 0 10px;
+
+  // 加载状态
+  .loading-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 300px;
+  }
 
   // 授信卡片列表（保持原样式）
   .credit-list {
@@ -268,11 +396,11 @@ const openCreditDialog = (data) => {
     }
   }
 
-  // 🔥 核心优化：授信详情弹窗样式（严格匹配UI图）
+  // 授信详情弹窗样式
   .credit-detail {
     padding: 16px 0;
-	border-top: 1px solid #ECEEF2;
-    // 1. 基础信息行样式
+    border-top: 1px solid #ECEEF2;
+
     .base-info-row {
       display: flex;
       justify-content: space-between;
@@ -290,20 +418,14 @@ const openCreditDialog = (data) => {
       }
     }
 
-    // 2. 通用section样式
     .credit-section {
       margin-bottom: 30px;
-      // border-top: 1px solid #ECEEF2;
-      // padding-top: 16px;
 
-      // section头部（带主题色伪元素）
       .section-header {
         display: flex;
         align-items: center;
-        // margin-bottom: 12px;
         font-size: 14px;
 
-        // 伪元素（3px宽主题色竖条）
         &::before {
           content: '';
           width: 3px;
@@ -319,11 +441,10 @@ const openCreditDialog = (data) => {
         }
 
         .section-value {
-          color: #3799AE; // 统计值主题色
+          color: #3799AE;
         }
       }
 
-      // section表格（无表头）
       .section-table {
         width: 100%;
         border-collapse: collapse;
@@ -344,7 +465,7 @@ const openCreditDialog = (data) => {
         }
 
         .table-value {
-          color: #3799AE; // 数值主题色
+          color: #3799AE;
         }
 
         .table-time {
@@ -352,14 +473,14 @@ const openCreditDialog = (data) => {
         }
       }
 
-      // 滚动表格（授信帐期多数据）
       .scrollable-table {
         max-height: 180px;
         overflow-y: auto;
       }
     }
   }
-  // 弹窗底部按钮（保持原样式）
+
+  // 弹窗底部按钮
   :deep(.t-dialog__footer) {
     .t-button--theme-default {
       width: 80px;

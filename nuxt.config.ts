@@ -7,7 +7,6 @@ export default defineNuxtConfig({
 	    '@': process.cwd()
 	  },
 	plugins: ['~/plugins/pinia.ts'],
-  modules: ['@pinia/nuxt'],
   pinia: {
       autoImports: false, // 禁用自动导入，避免版本兼容问题
     },
@@ -21,11 +20,28 @@ export default defineNuxtConfig({
   
       // 公开变量（客户端+服务端可访问，需放在public对象中）
       public: {
-        apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL, // 接口基础地址
+        apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || '/prod-api', // 接口基础地址
         env: process.env.NUXT_PUBLIC_ENV, // 环境标记
         requestTimeout: Number(process.env.NUXT_PUBLIC_REQUEST_TIMEOUT) || 10000, // 超时时间（默认10秒）
       },
     },
+	// 开发时推荐使用 vite proxy 避免跨域问题（可选）
+	  // 如果你想在开发环境用相对路径请求并由本地 dev server 转发到后端，打开下面 proxy 配置
+	  // vite: {
+	  //   server: {
+	  //     proxy: {
+	  //       // 将以 /yp-resource 开头的请求转发到后端，避免浏览器 CORS
+	  //       '/prod-api': {
+	  //         // target: 'http://36.139.142.121:888',
+			//   target: 'https://yicaituan.com.cn',
+	  //         changeOrigin: true,
+	  //         secure: false,
+	  //         // 如果后端路径需要保留 /yp-resource 前缀，则无需 rewrite；否则可以调整
+	  //         // rewrite: (path) => path.replace(/^\/yp-resource/, '/yp-resource')
+	  //       },
+	  //     },
+	  //   },
+	  // },
   components: {
       dirs: ['~/components/common']
     },
@@ -61,9 +77,15 @@ export default defineNuxtConfig({
     '@nuxt/icon',
     '@nuxt/image',
     '@nuxt/scripts',
-	// '@tdesign-vue-next/nuxt'
+	'@tdesign-vue-next/nuxt',
+	'@pinia/nuxt',
     // 'vue-schema-org/nuxt'
   ],
+  tdesign: {
+      prefix: 'T', // 组件前缀，对应模板中的 <t-input> 等
+      importStyle: 'scss', // 样式导入方式
+      components: ['Input', 'Button', 'Checkbox', 'Loading', 'Message'], // 按需引入组件（可选）
+    },
   // 5. SEO基础配置（商城必备）
   seo: {
     siteName: '严牌商城',

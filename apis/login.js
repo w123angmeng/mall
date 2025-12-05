@@ -13,6 +13,10 @@ export const getRegisterSmsCode = async (params) => {
   return await get('/sms/smsRegisterCaptcha', {
     phonenumber: params.phoneNumber
   });
+  // return await get('/yp-resource/sms/smsForgetCaptcha', {
+  //   phonenumber: params.phoneNumber
+  // });
+  
 };
 
 /**
@@ -20,6 +24,8 @@ export const getRegisterSmsCode = async (params) => {
  * @param {Object} data - 登录参数
  * @param {string} data.phoneNumber - 手机号
  * @param {string} data.password - 登录密码
+ * @param {string} data.smsCode - 注册短信验证码
+ * @param {string} data.grantType - 验证码/登录密码 password/grantType
  */
 export const login = async (data) => {
   const { post } = useRequest();
