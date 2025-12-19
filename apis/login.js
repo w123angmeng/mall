@@ -68,7 +68,7 @@ export const register = async (data) => {
 /**
  * 注销登录
  */
-export const logout = async () => {
+export const logoutApi = async () => {
   const { post } = useRequest();
   const tokenCookie = useCookie('user_token');
   const refreshTokenCookie = useCookie('refresh_token');
@@ -137,4 +137,26 @@ export const getLoginSmsCode = async (params) => {
 export const getForgetPwdSmsCode = async (params) => {
   const { get } = useRequest();
   return await get('/sms/smsForgetCaptcha', params);
+};
+
+/**
+ * 修改手机号短信验证码
+ * @param {Object} params - 请求参数
+ * @param {string} params.phonenumber - 手机号
+ * @param {string|number} params.userType - 用户类型（后端定义的类型值）
+ */
+export const getUpdatePhoneCaptcha = async (params) => {
+  const { get } = useRequest();
+  return await get('/sms/smsUpdatePhoneCaptcha', params);
+};
+
+/**
+ * 修改密码短信验证码
+ * @param {Object} params - 请求参数
+ * @param {string} params.phonenumber - 手机号
+ * @param {string|number} params.userType - 用户类型（后端定义的类型值）
+ */
+export const getUpdatePasswordCaptcha = async (params) => {
+  const { get } = useRequest();
+  return await get('/sms/smsUpdatePasswordCaptcha', params);
 };

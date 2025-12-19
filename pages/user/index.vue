@@ -121,19 +121,25 @@ const userAvatar = computed(() => {
  */
 const userName = computed(() => {
   if (!userStore.userInfo) return '';
-  
-  // 1. 优先显示真实姓名
-  if (userStore.userInfo.realName && userStore.userInfo.realName.trim()) {
-    return userStore.userInfo.realName;
+  const userInfo = userStore.userInfo
+  const authType = Number(userInfo.certified);
+  if (authType >= 2 && userInfo.userName) {
+    return userInfo.userName;
   }
-  // 2. 其次显示手机号（脱敏处理）
-  if (userStore.phone) {
-    return userStore.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+  if (authType === 1 && userInfo.userName) {
+    return userInfo.userName;
   }
-  // 3. 无信息则返回空
-  return '';
+  if (userInfo.phoneNumber) {
+    return formatPhone(userInfo.phoneNumber);
+  }
+  return '未设置';
 });
 
+// 格式化手机号
+const formatPhone = (phone) => {
+  if (!phone) return '未绑定';
+  return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
+};
 // ========== 辅助方法 ==========
 /**
  * 头像加载失败时的处理（兜底显示默认头像）
@@ -150,7 +156,7 @@ onMounted(() => {
   // 客户端环境下校验
   if (process.client) {
     // 未登录则跳转到登录页
-    if (!userStore.isLoggedIn()) {
+    if (!userStore.isLoggedIn) {
       Message.warning('请先登录');
       navigateTo({
         path: '/login',
@@ -160,7 +166,7 @@ onMounted(() => {
     }
 
     // 已登录但用户信息不完整，尝试重新获取
-    if (userStore.isLoggedIn() && !userStore.userInfo?.realName && !userStore.phone) {
+    if (userStore.isLoggedIn && !userStore.userInfo?.realName && !userStore.phone) {
       Message.info('正在加载用户信息...');
       // 可扩展：重新调用获取用户信息接口
       // userStore.initUserInfo({ token: userStore.token }).catch(() => {
@@ -176,7 +182,7 @@ onMounted(() => {
 <style lang="scss" scoped>
 .user-center-container {
   width: 1200px;
-  margin: 20px auto;
+  margin: 5px auto 20px;
   padding: 0;
 
   // 面包屑
@@ -214,14 +220,11 @@ onMounted(() => {
         border-radius: 50%;
         object-fit: cover;
         margin-bottom: 8px;
-        // 增加边框，提升视觉效果
-        border: 1px solid #ECEEF2;
       }
 
       .account-name {
         font-size: 14px;
         color: #333;
-        margin: 0; // 清除默认margin
       }
     }
 
@@ -283,5 +286,90 @@ onMounted(() => {
     padding: 24px;
     min-height: 600px;
   }
+  
+  .diy-dialog {
+	  // 弹窗样式
+	  	  :deep(.t-dialog--default) {
+	  		  padding: 0;
+	  		  border-radius: 4px;
+	  		  border: 1px solid #ECEEF2;
+	  	  }
+	  	  :deep(.t-dialog__header) {
+	  		  height: 48px;
+	  		  padding: 16px;
+	  		  font-size: 16px;
+	  		  font-weight: 350;
+	  		  line-height: 16px;
+	  		  color: #272727;
+	  		  box-sizing: border-box;
+	  		  border-bottom: 1px solid #ECEEF2;
+	  		  border-radius: 4px 4px 0px 0px;
+	  		  background: #F9FAFC;
+	  	  }
+	  	  :deep(.t-dialog__body) {
+	  		  padding: 24px 24px 40px;
+	  	  }
+	  	  :deep(.t-dialog__footer) {
+	  	  	padding: 0 24px 24px;
+	  		button {
+	  			width: 100px;
+	  			height: 32px;
+	  			border-radius: 4px;
+	  		}
+	  		.t-button + .t-button {
+	  		    margin-left: 20px;
+	  		}
+	  	  }
+	  	  
+	  	  // 表单相关样式
+	  	  .t-form__item {
+	  	  	  margin-bottom: 16px;
+	  	  }
+	  	  .t-input-adornment {
+	  		  width: 100%;
+	  	  }
+	  	  .form-item {
+	  	    // margin-bottom: 15px;
+	  	    width: 100%;
+	  	    height: 32px;
+	  	    border: 1px solid #ECEEF2;
+	  	    border-radius: 4px;
+	  	    padding: 0 15px 0 0;
+	  	    box-sizing: border-box;
+	  	    display: flex;
+	  	    align-items: center;
+	  	    justify-content: flex-start;
+	  	  
+	  	    .form-input {
+	  	      flex: 1;
+	  	      height: 32px;
+	  	  
+	  	      :deep(.t-input__inner) {
+	  	        // border-color: #ECEEF2;
+	  	        // &:focus {
+	  	        //   border-color: #3799AE;
+	  	        //   box-shadow: 0 0 0 2px rgba(55, 153, 174, 0.1);
+	  	        // }
+	  	      }
+	  	  	  
+	  	  	  :deep(.t-input) {
+	  	  	    height: 32px !important;
+	  	  	    border: none !important;
+	  	  	    box-shadow: none !important;
+	  	  	    background: transparent !important;
+	  	  	  
+	  	  	    .t-input__inner {
+	  	  	      height: 100% !important;
+	  	  	      border: none !important;
+	  	  	      outline: none !important;
+	  	  	      box-shadow: none !important;
+	  	  	      padding: 0 !important;
+	  	  	      line-height: 1 !important;
+	  	  	    }
+	  	  	  }
+	  	    }
+	  }
+  }
+  
 }
 </style>

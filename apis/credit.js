@@ -156,11 +156,12 @@ export const getVerifyApi = () => {
      * @param {Function} [params.onProgress] - 上传进度回调
      */
     recognizeIdCard: async (params) => {
-      const formData = new FormData();
-      formData.append('frontFile', params.frontFile);
-      formData.append('backFile', params.backFile);
+	 console.log('--------/cert/recognizeIdCard:', params)
+      // const formData = new FormData();
+      // formData.append('frontFile', params.frontFile);
+      // formData.append('backFile', params.backFile);
 
-      return await upload('/cert/recognizeIdCard', formData, (progress) => {
+      return await upload('/cert/recognizeIdCard', params, (progress) => {
         params.onProgress && params.onProgress(progress);
       });
     }

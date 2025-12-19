@@ -69,13 +69,32 @@
 <script setup>
 definePageMeta({ layout: 'auth' });
 import { ref, onMounted } from 'vue';
-import { navigateTo } from '#app';
+import { navigateTo, useRoute } from '#app';
 import * as loginApi from '@/apis/login';
+// 导入 TDesign 的 MessagePlugin
+import { MessagePlugin } from 'tdesign-vue-next';
 
-// 初始化message兜底，避免undefined
-let message = {
-  error: (text) => alert(text),
-  success: (text) => alert(text)
+// 核心新增：获取路由参数
+const route = useRoute();
+
+// 统一消息提示方法（适配 TDesign MessagePlugin 规范）
+const showMessage = (type, text) => {
+  switch (type) {
+    case 'error':
+      MessagePlugin.error({ content: text });
+      break;
+    case 'success':
+      MessagePlugin.success({ content: text });
+      break;
+    case 'warning':
+      MessagePlugin.warning({ content: text });
+      break;
+    case 'info':
+      MessagePlugin.info({ content: text });
+      break;
+    default:
+      MessagePlugin.info({ content: text });
+  }
 };
 
 const form = ref({ 
@@ -88,16 +107,17 @@ const codeBtnText = ref('获取验证码');
 const codeBtnDisabled = ref(false);
 const isSubmitting = ref(false);
 
-// 客户端动态导入TDesign Message
-onMounted(async () => {
-  if (process.client) {
-    try {
-      const tdesign = await import('tdesign-vue-next');
-      if (tdesign?.Message && typeof tdesign.Message.error === 'function') {
-        message = tdesign.Message;
-      }
-    } catch (e) {
-      // 导入失败继续使用alert兜底
+// 核心新增：页面挂载时读取路由中的手机号参数
+onMounted(() => {
+  // 如果路由参数中有phone，且格式正确，自动填充到输入框
+  if (route.query.phone) {
+    const phone = decodeURIComponent(route.query.phone);
+    const isPhoneValid = (phone) => {
+      const reg = /^1[3-9]\d{9}$/;
+      return reg.test(phone);
+    };
+    if (isPhoneValid(phone)) {
+      form.value.phone = phone;
     }
   }
 });
@@ -126,7 +146,7 @@ const getCode = async () => {
 
   // 手机号校验
   if (!isPhoneValid(form.value.phone)) {
-    message.error('请输入正确的11位手机号');
+    showMessage('error', '请输入正确的11位手机号');
     return;
   }
 
@@ -135,9 +155,9 @@ const getCode = async () => {
     // 调用忘记密码验证码接口
     await loginApi.getForgetPwdSmsCode({
       phonenumber: form.value.phone,
-      userType: 1
+      userType: 'customer_user'
     });
-    message.success('验证码发送成功，请注意查收');
+    showMessage('success', '验证码发送成功，请注意查收');
     
     // 倒计时逻辑
     let count = 60;
@@ -152,7 +172,7 @@ const getCode = async () => {
       }
     }, 1000);
   } catch (error) {
-    message.error(error.message || '验证码发送失败，请重试');
+    showMessage('error', error.message || '验证码发送失败，请重试');
     codeBtnDisabled.value = false;
   }
 };
@@ -163,22 +183,22 @@ const handleConfirm = async () => {
 
   // 表单校验
   if (!isPhoneValid(form.value.phone)) {
-    message.error('请输入正确的11位手机号');
+    showMessage('error', '请输入正确的11位手机号');
     return;
   }
   
   if (!isCodeValid(form.value.code)) {
-    message.error('请输入6位数字验证码');
+    showMessage('error', '请输入6位数字验证码');
     return;
   }
   
   if (!isPasswordValid(form.value.newPassword)) {
-    message.error('密码需6-16位，且包含字母和数字');
+    showMessage('error', '密码需6-16位，且包含字母和数字');
     return;
   }
   
   if (form.value.newPassword !== form.value.reNewPassword) {
-    message.error('两次输入的新密码不一致');
+    showMessage('error', '两次输入的新密码不一致');
     return;
   }
 
@@ -191,12 +211,12 @@ const handleConfirm = async () => {
       newPassword: form.value.newPassword
     });
     
-    message.success('密码重置成功！请登录');
+    showMessage('success', '密码重置成功！请登录');
     setTimeout(() => {
       navigateTo('/login');
     }, 1000);
   } catch (error) {
-    message.error(error.message || '密码重置失败，请重试');
+    showMessage('error', error.message || '密码重置失败，请重试');
   } finally {
     isSubmitting.value = false;
   }
@@ -375,6 +395,10 @@ const handleCancel = () => {
   border-color: #ECEEF2;
   color: #999;
   cursor: not-allowed;
+}
+
+/* 统一间距 */
+.mb-md {
 }
 
 /* 统一间距 */

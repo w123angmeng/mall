@@ -16,22 +16,44 @@
           </NuxtLink>
         </div>
 
-        <!-- 右侧菜单（数组循环） -->
+        <!-- 右侧菜单（根据登录状态动态渲染） -->
         <div class="top-nav-right">
-          <NuxtLink 
-            v-for="menu in rightMenuList" 
-            :key="menu.key"
-            :to="menu.path"
-            class="nav-item"
-            :class="[
-              { active: isMenuActive(menu.path) },
-              menu.key === 'cart' ? 'cart-item' : ''
-            ]"
-          >
-            <!-- 购物车特殊处理：显示图标 -->
-            <i class="cart-icon" v-if="menu.key === 'cart'">🛒</i>
-            {{ menu.name }}
-          </NuxtLink>
+          <!-- 未登录：显示登录、注册按钮 -->
+          <template v-if="!userStore?.userInfo?.token">
+            <NuxtLink 
+              v-for="menu in unLoginMenuList" 
+              :key="menu.key"
+              :to="menu.path"
+              class="nav-item"
+              :class="{ active: isMenuActive(menu.path) }"
+            >
+              {{ menu.name }}
+            </NuxtLink>
+          </template>
+          
+          <!-- 已登录：显示脱敏昵称 + 其他菜单（隐藏登录/注册） -->
+          <template v-else>
+            <!-- 脱敏昵称展示 -->
+            <span class="nav-item nickname-item">
+              {{ formatNickname(userStore?.userInfo?.userName || '') }}
+            </span>
+            
+            <!-- 其他菜单（个人中心、客服、购物车） -->
+            <NuxtLink 
+              v-for="menu in loggedMenuList" 
+              :key="menu.key"
+              :to="menu.path"
+              class="nav-item"
+              :class="[
+                { active: isMenuActive(menu.path) },
+                menu.key === 'cart' ? 'cart-item' : ''
+              ]"
+            >
+              <!-- 购物车特殊处理：显示图标 -->
+              <i class="cart-icon" v-if="menu.key === 'cart'">🛒</i>
+              {{ menu.name }}
+            </NuxtLink>
+          </template>
         </div>
       </div>
     </div>
@@ -44,7 +66,7 @@
         </div>
         <div class="search-wrapper" @click.stop>
           <input
-			v-model="searchKeyword" 
+            v-model="searchKeyword" 
             type="text"
             placeholder="搜索"
             class="search-input"
@@ -80,16 +102,18 @@
       </div>
     </div>
   </div>
-  </template>
+</template>
 
 <script setup>
-import { ref } from 'vue';
-// 🔥 关键修复：导入Nuxt3的路由钩子
+import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useUserStore } from '@/stores/user'; // 导入用户Store
 
-// 🔥 获取路由对象（替代原来的$route）
+// 获取路由对象
 const route = useRoute();
 const router = useRouter();
+// 初始化用户Store
+const userStore = useUserStore();
 
 const searchKeyword = ref('');
 
@@ -99,22 +123,29 @@ const handleSearch = () => {
     router.push({ path: '/search', query: { keyword: searchKeyword.value } });
   }
 };
+
 // 1. 左侧导航菜单数组
 const leftMenuList = ref([
   { key: 'home', name: '首页', path: '/' },
   { key: 'official', name: '严牌官网', path: '/official' }
 ]);
 
-// 2. 右侧导航菜单数组
-const rightMenuList = ref([
+// 2. 未登录时显示的右侧菜单（登录、注册）
+const unLoginMenuList = ref([
   { key: 'login', name: '登录', path: '/login' },
   { key: 'register', name: '注册', path: '/register' },
+  { key: 'contact', name: '联系客服', path: '/contact' },
+  { key: 'cart', name: '购物车', path: '/cart' }
+]);
+
+// 3. 已登录时显示的右侧菜单（隐藏登录/注册）
+const loggedMenuList = ref([
   { key: 'user', name: '个人中心', path: '/user' },
   { key: 'contact', name: '联系客服', path: '/contact' },
   { key: 'cart', name: '购物车', path: '/cart' }
 ]);
 
-// 3. 菜单激活判断方法（修正：用route替代$route）
+// 4. 菜单激活判断方法
 const isMenuActive = (path) => {
   // 个人中心子路由也高亮
   if (path === '/user') {
@@ -122,6 +153,27 @@ const isMenuActive = (path) => {
   }
   // 其他菜单精确匹配
   return route.path === path;
+};
+
+// 5. 昵称脱敏格式化（修正后的核心逻辑）
+// 规则：
+// - 长度 <= 4位：仅最后一位替换成*
+// - 长度 > 4位：前4位 + ***
+const formatNickname = (nickname) => {
+  if (!nickname) return '未设置';
+  
+  const len = nickname.length;
+  // 规则1：长度 <= 4位，仅最后一位替换为*
+  if (len <= 4) {
+    // 长度为1时直接返回*
+    if (len === 1) {
+      return '*';
+    }
+    // 长度>1时，前n-1位 + *
+    return `${nickname.substring(0, len - 1)}*`;
+  }
+  // 规则2：长度 > 4位，前4位 + ***
+  return `${nickname.substring(0, 4)}***`;
 };
 
 // 搜索相关逻辑
@@ -136,10 +188,10 @@ const clearRecentSearch = () => { recentSearch.value = []; };
 </script>
 
 <style lang="scss" scoped>
-/* 样式部分完全不变，省略（和上一版一致） */
+/* 顶部导航样式 */
 .top-nav-bar {
   background-color: #ffffff;
-  border-bottom: 1px solid #eee;
+  // border-bottom: 1px solid #eee;
   padding: 8px 0;
 
   .top-nav-container {
@@ -163,13 +215,22 @@ const clearRecentSearch = () => { recentSearch.value = []; };
         gap: 4px;
         .cart-icon { font-size: 16px; padding-right: 4px;}
       }
+      // 昵称样式
+      &.nickname-item {
+        // cursor: default;
+        // color: #3799AE;
+        // font-weight: 500;
+		&.active, &:hover { color: #666; }
+      }
     }
   }
 }
 
+/* Logo+搜索区样式 */
 .logo-search-bar {
   padding: 15px 0;
-  border-bottom: 1px solid #eee;
+  // border-bottom: 1px solid #eee;
+  background-color: var(--theme-bg);
 
   .logo-search-container {
     width: 1200px;
@@ -190,14 +251,21 @@ const clearRecentSearch = () => { recentSearch.value = []; };
       width: 1000px;
       position: relative;
 
-      .search-input {
+      :deep(.search-input) {
         width: 100%;
         height: 36px;
         padding: 0 12px;
-        border: 1px solid #ECEEF2;
+        border: 1px solid #FFFFFF;
         border-radius: 4px;
         outline: none;
-        &.focused { border-color: #3799AE; }
+		background-color: #FFFFFF !important;
+        &:focus {
+            background-color: #FFFFFF !important;
+            // border-color: #3799AE;
+        }
+		&::placeholder {
+			color: #A1A1A2;
+		}
       }
 
       .search-btn {
@@ -223,6 +291,7 @@ const clearRecentSearch = () => { recentSearch.value = []; };
         border: 1px solid #ECEEF2;
         padding: 15px;
         z-index: 99;
+		border-radius: 6px;
 
         .popup-section {
           margin-bottom: 15px;

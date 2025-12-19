@@ -217,7 +217,7 @@ const currentProducts = computed(() => {
 .main-container {
   width: 1200px;
   margin: 0 auto;
-  padding: 20px 0;
+  padding: 5px 0 20px;
 }
 
 .content-wrapper {

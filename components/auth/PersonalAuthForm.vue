@@ -9,16 +9,18 @@
         <!-- 身份证正面上传 -->
         <div class="upload-card front-card">
           <t-upload
+            ref="frontUploadRef"
             v-model="uploadFiles.front"
-            action="#"
             :max-size="10 * 1024 * 1024"
-            :accept="['image/jpeg', 'image/png']"
+            :accept="'image/jpeg, image/png'"
             list-type="picture-card"
-            :show-upload-list="false"
-            @change="handleUploadChange('front')"
+            :show-upload-list="true"
+            :request-method="(file) => handleFileUpload(file, 'front')"
+            :on-fail="handleUploadFail"
+            theme="image"
           >
             <div class="upload-content">
-              <img src="~/assets/images/upload.png"/>
+              <img src="~/assets/images/upload.png" alt="上传图标"/>
               <div class="upload-text">证件正面照片</div>
             </div>
           </t-upload>
@@ -26,16 +28,18 @@
         <!-- 身份证背面上传 -->
         <div class="upload-card back-card">
           <t-upload
+            ref="backUploadRef"
             v-model="uploadFiles.back"
-            action="#"
             :max-size="10 * 1024 * 1024"
-            :accept="['image/jpeg', 'image/png']"
+            :accept="'image/jpeg, image/png'"
             list-type="picture-card"
-            :show-upload-list="false"
-            @change="handleUploadChange('back')"
+            :show-upload-list="true"
+            :request-method="(file) => handleFileUpload(file, 'back')"
+            :on-fail="handleUploadFail"
+            theme="image"
           >
             <div class="upload-content">
-              <img src="~/assets/images/upload.png"/>
+              <img src="~/assets/images/upload.png" alt="上传图标"/>
               <div class="upload-text">证件反面照片</div>
             </div>
           </t-upload>
@@ -46,35 +50,35 @@
     
     <!-- 表单区域 -->
     <form class="auth-form" @submit.prevent="handleSubmit">
-      <!-- 身份证姓名 -->
+      <!-- 身份证姓名：字段改为 cardName 与父组件对齐 -->
       <div class="form-group mb-md">
         <t-input
-          v-model="form.idName"
+          v-model="form.cardName"
           placeholder="自动识别姓名"
           :disabled="isSubmitting"
         />
       </div>
     
-      <!-- 身份证号 -->
+      <!-- 身份证号：字段改为 cardNumber 与父组件对齐 -->
       <div class="form-group mb-md">
         <t-input
-          v-model="form.idNumber"
+          v-model="form.cardNumber"
           placeholder="自动识别身份证号"
           :disabled="isSubmitting"
         />
       </div>
     
-      <!-- 有效期选择 -->
+      <!-- 有效期选择：字段改为 cardLongTerm 与父组件对齐 -->
       <div class="form-group mb-md date-row">
-        <t-date-picker
+        <t-date-range-picker
           v-model="form.validDate"
+          clearable
           type="daterange"
-          placeholder="开始日期 — 结束日期"
           class="date-picker"
-          :disabled="form.isLongTerm || isSubmitting"
+          :disabled="form.cardLongTerm || isSubmitting"
         />
         <t-radio
-          v-model="form.isLongTerm"
+          v-model="form.cardLongTerm"
           label="true"
           class="long-term-radio"
           :disabled="isSubmitting"
@@ -86,7 +90,7 @@
       <!-- 产业业务姓名 -->
       <div class="form-group mb-md">
         <t-input
-          v-model="form.businessName"
+          v-model="form.salePerson"
           placeholder="请输入对接产业业务姓名"
           :disabled="isSubmitting"
         />
@@ -95,7 +99,7 @@
       <!-- 交易意向 -->
       <div class="form-group mb-md">
         <t-input
-          v-model="form.tradeIntention"
+          v-model="form.purchaseIntent"
           placeholder="请输入交易意向"
           :disabled="isSubmitting"
         />
@@ -110,129 +114,207 @@
         <button type="button" class="cancel-btn" @click="handleCancel" :disabled="isSubmitting">取消</button>
       </div>
     
-      <!-- 跳过链接 -->
-      <a href="/" class="skip-link text-center" @click.prevent="handleSkip">跳过个人认证</a>
+      <!-- 跳过链接：根据from字段控制显示 -->
+      <a 
+        href="/" 
+        class="skip-link text-center" 
+        @click.prevent="handleSkip"
+        v-if="from !== 'authManage'"
+      >
+        跳过个人认证
+      </a>
     </form>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, watch, onMounted } from 'vue';
-import { navigateTo, useNuxtApp } from '#app';
-import { Input, DatePicker, Radio, Upload, Loading, Message } from 'tdesign-vue-next';
+import { navigateTo } from '#app';
+import { MessagePlugin } from 'tdesign-vue-next';
+import { uploadFile } from '@/apis/common';
+import { getVerifyApi } from '@/apis/credit';
 
-// 定义接收父组件传值
+const verifyApi = getVerifyApi();
+
+// 定义接收父组件传值：字段与父组件 personalForm 完全对齐
 const props = defineProps({
-  // 从AuthManage.vue传递的用户基础信息
-  userInfo: {
-    type: Object,
-    default: () => ({
-      nickname: '',
-      phoneNumber: ''
-    })
-  },
-  // 已有的认证信息（编辑场景）
   authInfo: {
     type: Object,
-    default: () => ({})
+    default: () => ({
+      id: '',
+      cardFront: '',
+      cardBack: '',
+      cardName: '',
+      cardNumber: '',
+      cardLongTerm: 1,
+      cardStart: '',
+      cardEnd: '',
+      salePerson: '',
+      purchaseIntent: ''
+    })
+  },
+  from: {
+    type: String,
+    default: 'personalAuth'
+  },
+  isSubmitting: {
+    type: Boolean,
+    default: false
   }
 });
 
-// 定义事件发射
 const emit = defineEmits(['submit', 'cancel', 'skip']);
 
-// Nuxt App 实例
-const nuxtApp = useNuxtApp();
+// 上传组件Ref
+const frontUploadRef = ref();
+const backUploadRef = ref();
+
+// 上传文件存储（适配TDesign Upload的v-model数组格式）
+const uploadFiles = ref({
+  front: [],
+  back: []
+});
+
+// 卡片文件信息存储
+const cardFileInfo = ref({
+  front: { url: '', ossId: '' },
+  back: { url: '', ossId: '' },
+  recognizeData: null
+});
 
 // 加载状态
-const isSubmitting = ref(false);
+const isUploading = ref(false);
+const isRecognizing = ref(false);
 
-// 上传文件状态（修正原有错误的license字段）
-const uploadFiles = ref({
-  front: [], // 身份证正面
-  back: []   // 身份证背面
-});
-
-// 表单数据（修正原有错误的企业相关字段，改为个人认证字段）
+// 核心修复：表单字段与父组件 personalForm 完全对齐
 const form = reactive({
-  idName: '', // 身份证姓名
-  idNumber: '', // 身份证号
-  validDate: [], // 有效期范围
-  isLongTerm: false, // 是否长期有效
-  businessName: '', // 产业业务姓名
-  tradeIntention: '' // 交易意向
+  cardName: '',
+  cardNumber: '',
+  validDate: [],
+  cardLongTerm: 0, // 1=长期有效，0=自定义日期
+  salePerson: '',
+  purchaseIntent: ''
 });
 
-// 初始化Message提示
+// 消息提示函数
 const showMessage = (type, text) => {
-  if (nuxtApp.$message) {
-    nuxtApp.$message[type]({
-      content: text,
-      duration: 3000
-    });
-  } else {
-    Message[type]({
-      content: text,
-      duration: 3000
-    });
+  MessagePlugin[type]({ content: text, duration: 3000 });
+};
+
+// 辅助函数：校验URL有效性
+const isValidUrl = (url) => {
+  const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([\/\w.-]*)*\/?$/;
+  return urlRegex.test(url);
+};
+
+// 文件上传方法
+const handleFileUpload = (file, type) => {
+  return new Promise(async (resolve) => {
+    if (file.size > 10 * 1024 * 1024) {
+      resolve({ status: 'fail', error: '图片大小不能超过10MB' });
+      return;
+    }
+
+    if (isUploading.value) {
+      resolve({ status: 'fail', error: '已有文件正在上传，请稍等' });
+      return;
+    }
+
+    try {
+      isUploading.value = true;
+      const uploadRes = await uploadFile({
+        file: file.raw,
+        onProgress: (progress) => {
+          const percent = Math.floor(progress * 100);
+          console.log(`${type === 'front' ? '正面' : '背面'}上传进度：${percent}%`);
+        }
+      });
+
+      if (uploadRes?.code === 200 && uploadRes.data?.url) {
+        const { url, ossId } = uploadRes.data;
+        if (!isValidUrl(url)) {
+          resolve({ status: 'fail', error: '上传成功但URL格式无效' });
+          showMessage('warning', '图片无法预览，请重新上传');
+          return;
+        }
+
+        // 存储文件信息
+        cardFileInfo.value[type] = { url, ossId };
+        // 更新Upload组件的v-model
+        uploadFiles.value[type] = [{ url, name: file.name, ossId }];
+
+        resolve({ status: 'success', response: { url, name: file.name } });
+        showMessage('success', `${type === 'front' ? '身份证正面' : '身份证背面'}上传成功`);
+
+        // 正反面都上传后自动识别
+        if (cardFileInfo.value.front.ossId && cardFileInfo.value.back.ossId) {
+          await handleIdCardRecognize();
+        }
+      } else {
+        resolve({ status: 'fail', error: uploadRes?.msg || '上传失败' });
+        showMessage('error', `${type === 'front' ? '正面' : '背面'}上传失败`);
+      }
+    } catch (error) {
+      resolve({ status: 'fail', error: error.message || '网络异常' });
+      showMessage('error', `${type === 'front' ? '正面' : '背面'}上传失败`);
+    } finally {
+      isUploading.value = false;
+    }
+  });
+};
+
+// 身份证识别方法
+const handleIdCardRecognize = async () => {
+  if (isRecognizing.value) return;
+  try {
+    isRecognizing.value = true;
+    const formData = new FormData();
+    formData.append('frontFileId', cardFileInfo.value.front.ossId);
+    formData.append('backFileId', cardFileInfo.value.back.ossId);
+
+    const res = await verifyApi.recognizeIdCard(formData);
+    if (res?.code === 200 && res.data) {
+      const { cardName, cardNumber, cardLongTerm, cardStart, cardEnd } = res.data;
+      // 自动填充表单（字段与父组件对齐）
+      form.cardName = cardName || '';
+      form.cardNumber = cardNumber || '';
+      form.cardLongTerm = cardLongTerm || 1;
+      if (cardLongTerm === 0) {
+        form.validDate = [cardStart, cardEnd];
+      }
+      showMessage('success', `身份证识别成功，${res.data.verified ? '信息匹配' : '信息不匹配'}`);
+    } else {
+      showMessage('warning', '身份证识别失败，请手动填写');
+    }
+  } catch (error) {
+    console.error('识别失败：', error);
+    showMessage('error', '身份证识别失败，请手动填写');
+  } finally {
+    isRecognizing.value = false;
   }
 };
 
-// 页面挂载时初始化表单值
-onMounted(() => {
-  // 1. 优先使用已有认证信息初始化（编辑场景）
-  if (props.authInfo) {
-    form.idName = props.authInfo.idName || '';
-    form.idNumber = props.authInfo.idNumber || '';
-    form.validDate = props.authInfo.validDate || [];
-    form.isLongTerm = props.authInfo.isLongTerm || false;
-    form.businessName = props.authInfo.businessName || '';
-    form.tradeIntention = props.authInfo.tradeIntention || '';
-    
-    // 初始化上传文件（如有）
-    if (props.authInfo.frontImg) uploadFiles.value.front = [{ url: props.authInfo.frontImg }];
-    if (props.authInfo.backImg) uploadFiles.value.back = [{ url: props.authInfo.backImg }];
-  } 
-  // 2. 其次使用用户昵称填充身份证姓名（新增场景）
-  else if (props.userInfo?.nickname) {
-    form.idName = props.userInfo.nickname;
-    // 可选项：用手机号填充业务联系人
-    form.businessName = props.userInfo.nickname;
+// 上传失败回调
+const handleUploadFail = (error) => {
+  console.error('上传失败：', error);
+  showMessage('error', error.error || '文件上传失败');
+  if (error.file?.type === 'front') {
+    uploadFiles.value.front = [];
+    cardFileInfo.value.front = { url: '', ossId: '' };
+  } else if (error.file?.type === 'back') {
+    uploadFiles.value.back = [];
+    cardFileInfo.value.back = { url: '', ossId: '' };
   }
-});
-
-// 监听长期有效选项，清空有效期
-watch(() => form.isLongTerm, (val) => {
-  if (val) {
-    form.validDate = [];
-  }
-});
+};
 
 // 身份证号校验规则
 const validateIdNumber = (idCard) => {
-  if (!idCard) return false;
-  // 18位身份证正则
   const reg = /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(1[0-2]))(([0-2][1-9])|10|20|30|31)\d{3}[0-9Xx]$/;
   return reg.test(idCard);
 };
 
-// 上传文件变化处理
-const handleUploadChange = (type) => {
-  // 可在这里添加文件上传前的校验逻辑
-  const files = uploadFiles.value[type];
-  if (files.length > 0) {
-    const file = files[0];
-    // 校验文件大小（双重保障，与组件max-size一致）
-    if (file.size && file.size > 10 * 1024 * 1024) {
-      showMessage('error', `${type === 'front' ? '身份证正面' : '身份证背面'}图片大小不能超过10MB`);
-      uploadFiles.value[type] = [];
-    }
-  }
-};
-
-// 表单整体校验
+// 表单校验（与父组件逻辑一致）
 const validateForm = () => {
-  // 1. 校验身份证照片
   if (uploadFiles.value.front.length === 0) {
     showMessage('error', '请上传身份证正面照片');
     return false;
@@ -241,81 +323,51 @@ const validateForm = () => {
     showMessage('error', '请上传身份证背面照片');
     return false;
   }
-
-  // 2. 校验身份证姓名
-  if (!form.idName || form.idName.trim() === '') {
+  if (!form.cardName.trim()) {
     showMessage('error', '请填写身份证姓名');
     return false;
   }
-
-  // 3. 校验身份证号
-  if (!form.idNumber || form.idNumber.trim() === '') {
+  if (!form.cardNumber.trim()) {
     showMessage('error', '请填写身份证号');
     return false;
   }
-  if (!validateIdNumber(form.idNumber.trim())) {
+  if (!validateIdNumber(form.cardNumber.trim())) {
     showMessage('error', '请填写有效的18位身份证号');
     return false;
   }
-
-  // 4. 校验有效期
-  if (!form.isLongTerm && (!form.validDate || form.validDate.length !== 2)) {
-    showMessage('error', '请选择身份证有效期或勾选长期有效');
+  if (form.cardLongTerm === 0 && form.validDate.length !== 2) {
+    showMessage('error', '请选择有效期或勾选长期有效');
     return false;
   }
-
-  // 5. 校验产业业务姓名
-  if (!form.businessName || form.businessName.trim() === '') {
+  if (!form.salePerson.trim()) {
     showMessage('error', '请填写对接产业业务姓名');
     return false;
   }
-
-  // 6. 校验交易意向
-  if (!form.tradeIntention || form.tradeIntention.trim() === '') {
+  if (!form.purchaseIntent.trim()) {
     showMessage('error', '请填写交易意向');
     return false;
   }
-
   return true;
 };
 
-// 提交认证
+// 提交方法：传递与父组件对齐的字段
 const handleSubmit = async () => {
-  // 1. 表单校验
   if (!validateForm()) return;
 
-  try {
-    isSubmitting.value = true;
-    
-    // 2. 构造提交数据
-    const submitData = {
-      ...form,
-      // 处理上传文件（实际项目中需替换为文件上传后的URL）
-      frontImg: uploadFiles.value.front[0]?.url || '',
-      backImg: uploadFiles.value.back[0]?.url || '',
-      // 处理长期有效
-      isLongTerm: form.isLongTerm === 'true' || form.isLongTerm === true
-    };
+  // 构造提交数据（字段与父组件 personalForm 完全一致）
+  const submitData = {
+    ...form,
+    cardFront: cardFileInfo.value.front.ossId || uploadFiles.value.front[0]?.ossId || '',
+    cardBack: cardFileInfo.value.back.ossId || uploadFiles.value.back[0]?.ossId || '',
+    cardStart: form.cardLongTerm === 0 ? form.validDate[0] : '',
+    cardEnd: form.cardLongTerm === 0 ? form.validDate[1] : ''
+  };
 
-    // 3. 发射提交事件给父组件
-    emit('submit', submitData);
-
-    // 提示成功（可由父组件接管提示）
-    showMessage('success', '个人认证提交成功，等待审核');
-    
-    // 4. 提交成功后跳转（可由父组件控制）
-    setTimeout(() => {
-      navigateTo('/user');
-    }, 1500);
-
-  } catch (error) {
-    showMessage('error', error.message || '个人认证提交失败，请重试');
-  } finally {
-    isSubmitting.value = false;
-  }
+  emit('submit', submitData);
+  showMessage('success', '表单验证通过，提交中...');
 };
 
-// 取消（返回选择认证页面）
+// 取消方法
 const handleCancel = () => {
   emit('cancel');
   navigateTo('/select-auth');
@@ -326,212 +378,247 @@ const handleSkip = () => {
   emit('skip');
   navigateTo('/');
 };
+
+// 页面挂载时初始化表单（从父组件接收数据）
+onMounted(() => {
+  const { authInfo } = props;
+  if (authInfo) {
+    form.cardName = authInfo.cardName || '';
+    form.cardNumber = authInfo.cardNumber || '';
+    form.cardLongTerm = authInfo.cardLongTerm || 1;
+    form.salePerson = authInfo.salePerson || '';
+    form.purchaseIntent = authInfo.purchaseIntent || '';
+    // 初始化已上传的文件
+    if (authInfo.cardFront) {
+      uploadFiles.value.front = [{ url: authInfo.cardFront, name: '身份证正面.jpg' }];
+      cardFileInfo.value.front.url = authInfo.cardFront;
+    }
+    if (authInfo.cardBack) {
+      uploadFiles.value.back = [{ url: authInfo.cardBack, name: '身份证背面.jpg' }];
+      cardFileInfo.value.back.url = authInfo.cardBack;
+    }
+    // 初始化有效期
+    if (authInfo.cardLongTerm === 0 && authInfo.cardStart && authInfo.cardEnd) {
+      form.validDate = [authInfo.cardStart, authInfo.cardEnd];
+    }
+  }
+});
+
+// 监听长期有效选项
+watch(() => form.cardLongTerm, (val) => {
+  if (val === 1) {
+    form.validDate = [];
+  }
+});
 </script>
 
 <style lang="scss" scoped>
 .personal-auth-form {
-  // 重置TDesign组件样式，与全局风格统一
-    :deep(.t-input) {
+  :deep(.t-input) {
+    height: 39px !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+
+    .t-input__inner {
+      height: 100% !important;
+      border: 1px solid #ECEEF2 !important;
+      border-radius: 4px !important;
+      outline: none !important;
+      padding: 0 15px !important;
+      font-size: 14px !important;
+    }
+  }
+
+  :deep(.t-upload) {
+    width: 100%;
+    height: 100%;
+    
+    .t-upload-card {
+      width: 120px !important;
+      height: 80px !important;
+    }
+    
+    .t-upload-card-img {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+    }
+  }
+
+  :deep(.t-date-range-picker) {
+    width: 220px;
+    .t-input__inner {
       height: 39px !important;
-      border: none !important;
-      box-shadow: none !important;
-      background: transparent !important;
-  
-      .t-input__inner {
-        height: 100% !important;
-        border: 1px solid #ECEEF2 !important;
-        border-radius: 4px !important;
-        outline: none !important;
-        box-shadow: none !important;
-        padding: 0 15px !important;
-        line-height: 1 !important;
-        font-size: 14px !important;
-      }
-    }
-  
-    :deep(.t-upload) {
-      width: 100%;
-      height: 100%;
-    }
-  
-    :deep(.t-date-picker) {
-      flex: 1;
-      height: 39px;
-  
-      .t-input__inner {
-        height: 100% !important;
-      }
-    }
-  
-    :deep(.t-radio) {
-      font-size: 14px;
-      color: #2F3032;
-      margin-left: 15px;
     }
   }
-  
-  /* 页面标题 */
-  .page-title {
-    font-size: 18px;
-    font-weight: 500;
-    color: #2F3032;
-    margin-bottom: 25px;
-  }
-  
-  /* 上传区域 */
-  .upload-section {
-    margin-bottom: 25px;
-  }
-  
-  .upload-label {
+
+  :deep(.t-radio) {
     font-size: 14px;
     color: #2F3032;
-    margin-bottom: 12px;
+    margin-left: 15px;
   }
-  
-  .required-mark {
-    color: #F53F3F; // 红色必填标记
-    margin-right: 4px;
+
+  :deep(.t-loading) {
+    display: inline-block;
+    margin-right: 8px;
   }
-  
-  .upload-cards {
+}
+
+.upload-section {
+  margin-bottom: 25px;
+}
+
+.upload-label {
+  font-size: 14px;
+  color: #2F3032;
+  margin-bottom: 12px;
+}
+
+.required-mark {
+  color: #F53F3F;
+  margin-right: 4px;
+}
+
+.upload-cards {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.upload-card {
+  width: 120px;
+  height: 80px;
+  border: 1px dashed #ECEEF2;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  position: relative;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+
+  &.front-card {
+    background-image: url('~/assets/images/idcard-front.png');
+  }
+
+  &.back-card {
+    background-image: url('~/assets/images/idcard-back.png');
+  }
+
+  &:hover {
+    border-color: #3799AE;
+  }
+
+  .upload-content {
+    width: 100%;
+    height: 100%;
     display: flex;
-    gap: 20px;
-    justify-content: center;
-    margin-bottom: 8px;
-  }
-  
-  .upload-card {
-    width: 120px;
-    height: 80px;
-    border: 1px dashed #ECEEF2; // 虚线边框
-    border-radius: 4px;
-    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    transition: border-color 0.2s;
-    position: relative;
-    background-repeat: no-repeat;
-    background-position: center center;
-    background-size: 40px 40px; // 背景图尺寸
-    img {
-  	  width: 20px;
-  	  height:20px;
-    }
-    // 正面卡片背景图
-    &.front-card {
-      background-image: url('~/assets/images/idcard-front.png');
-  	background-size: cover;
-    }
-    // 反面卡片背景图
-    &.back-card {
-      background-image: url('~/assets/images/idcard-back.png');
-  	background-size: cover;
-    }
-  
-    &:hover {
-      border-color: #3799AE; // hover时主题色边框
-    }
-  
-    // 上传内容容器（文字居中在背景图下方）
-    .upload-content {
-      // width: 100%;
-      // height: 100%;
-  	width: 120px;
-  	height: 80px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding-bottom: 8px; // 文字离底部距离
-    }
+    padding-bottom: 8px;
+    background: rgba(255,255,255,0.6);
   }
-  
-  /* 🔥 优化：上传文字样式（#838486 14px） */
-  .upload-text {
-    font-size: 14px !important;
-    color: #838486 !important;
-    margin-top: 4px; // 与背景图的间距
+}
+
+.upload-text {
+  font-size: 14px;
+  color: #838486;
+  margin-top: 4px;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #999;
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-group {
+  width: 100%;
+  margin-bottom: 16px !important;
+}
+
+.date-row {
+  display: flex;
+  align-items: center;
+}
+
+.btn-group {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.confirm-btn {
+  width: 170px;
+  height: 56px;
+  background: #3799AE;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+
+  &:hover {
+    background: #2d8094;
   }
-  
-  .upload-tip {
-    font-size: 12px;
-    color: #999;
+
+  &:disabled {
+    background: #ccc;
+    cursor: not-allowed;
   }
-  
-  /* 表单区域 */
-  .auth-form {
-    width: 100%;
-  }
-  
-  .form-group {
-    width: 100%;
-    margin-bottom: 16px !important;
-  }
-  
-  /* 有效期行布局 */
-  .date-row {
-    display: flex;
-    align-items: center;
-  }
-  
-  /* 按钮组 */
-  .btn-group {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-    margin-top: 10px;
-  }
-  
-  /* 🔥 优化2：提交按钮样式（170px宽/56px高/8px圆角） */
-  .confirm-btn {
-    width: 170px;
-    height: 56px;
-    background: #3799AE;
-    color: #fff;
-    border: none;
-    border-radius: 8px !important;
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .confirm-btn:hover {
-    background: #2d8094; // 深色hover效果
-  }
-  
-  /* 取消按钮保持原有比例适配 */
-  .cancel-btn {
-    width: 170px;
-    height: 56px;
-    background: transparent;
-    border: 1px solid #ECEEF2;
-    color: #2F3032;
-    border-radius: 8px; // 同步圆角
-    font-size: 16px;
-    cursor: pointer;
-    transition: border-color 0.2s, color 0.2s;
-  }
-  .cancel-btn:hover {
+}
+
+.cancel-btn {
+  width: 170px;
+  height: 56px;
+  background: transparent;
+  border: 1px solid #ECEEF2;
+  color: #2F3032;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+
+  &:hover {
     border-color: #3799AE;
     color: #3799AE;
   }
-  
-  /* 跳过链接 */
-  .skip-link {
-    display: block;
-    font-size: 14px;
-    color: #3799AE;
-    text-decoration: none;
-    margin-top: 16px;
+
+  &:disabled {
+    border-color: #ccc;
+    color: #ccc;
+    cursor: not-allowed;
   }
-  .skip-link:hover {
+}
+
+.skip-link {
+  display: block;
+  font-size: 14px;
+  color: #3799AE;
+  text-decoration: none;
+  margin-top: 16px;
+  text-align: center;
+
+  &:hover {
     text-decoration: underline;
   }
-  
-  /* 间距工具类 */
-  .mb-lg { margin-bottom: 25px !important; }
-  .mb-md { margin-bottom: 16px !important; }
-  .text-center { text-align: center; }
+}
+
+.mb-lg { margin-bottom: 25px !important; }
+.mb-md { margin-bottom: 16px !important; }
+.text-center { text-align: center; }
 </style>

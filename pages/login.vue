@@ -41,7 +41,8 @@
               type="password"
             />
           </div>
-          <a href="/forgot-password" class="forgot-link">忘记密码？</a>
+          <!-- 核心修改：将a标签改为点击事件，替代href跳转 -->
+          <a href="javascript:;" class="forgot-link" @click="handleForgotPassword">忘记密码？</a>
         </div>
 
         <div class="form-group mb-md" v-if="loginType === 'code'">
@@ -91,6 +92,8 @@ import { ref, onMounted } from 'vue';
 import { navigateTo, useRoute } from '#app';
 import { useUserStore } from '@/stores/user'; // 引入用户Store
 import * as loginApi from '@/apis/login';
+// 导入 TDesign 的 MessagePlugin
+import { MessagePlugin } from 'tdesign-vue-next';
 
 // 初始化核心变量
 const loginType = ref('password');
@@ -98,10 +101,24 @@ const isSubmitting = ref(false);
 const route = useRoute();
 const userStore = useUserStore(); // 实例化用户Store
 
-// 消息提示兜底（兼容服务端/客户端）
-let message = {
-  error: (text) => alert(text),
-  success: (text) => alert(text)
+// 统一消息提示方法（适配 TDesign MessagePlugin 规范）
+const showMessage = (type, text) => {
+  switch (type) {
+    case 'error':
+      MessagePlugin.error({ content: text });
+      break;
+    case 'success':
+      MessagePlugin.success({ content: text });
+      break;
+    case 'warning':
+      MessagePlugin.warning({ content: text });
+      break;
+    case 'info':
+      MessagePlugin.info({ content: text });
+      break;
+    default:
+      MessagePlugin.info({ content: text });
+  }
 };
 
 // 表单数据
@@ -119,23 +136,29 @@ const codeBtnDisabled = ref(false);
 // 页面挂载初始化
 onMounted(async () => {
   // 1. 已登录用户直接跳转
-  if (process.client && userStore.isLoggedIn()) {
+  if (process.client && userStore.isLoggedIn) {
     navigateTo(route.query.redirect || '/');
     return;
   }
-
-  // 2. 初始化TDesign Message
-  if (process.client) {
-    try {
-      const tdesign = await import('tdesign-vue-next');
-      if (tdesign?.Message && typeof tdesign.Message.error === 'function') {
-        message = tdesign.Message;
-      }
-    } catch (e) {
-      // 导入失败不处理，使用兜底alert
-    }
-  }
 });
+
+// ========== 新增：处理忘记密码跳转逻辑 ==========
+const handleForgotPassword = () => {
+  // 定义手机号校验规则（复用已有逻辑）
+  const isPhoneValid = (phone) => {
+    const reg = /^1[3-9]\d{9}$/;
+    return reg.test(phone);
+  };
+
+  let redirectUrl = '/forgot-password';
+  // 如果手机号已输入且格式正确，拼接手机号参数到跳转链接
+  if (form.value.phone && isPhoneValid(form.value.phone)) {
+    redirectUrl = `/forgot-password?phone=${encodeURIComponent(form.value.phone)}`;
+  }
+  
+  // 跳转到忘记密码页面
+  navigateTo(redirectUrl);
+};
 
 // ========== 工具校验函数 ==========
 /**
@@ -174,7 +197,7 @@ const getCode = async () => {
 
   // 手机号校验
   if (!isPhoneValid(form.value.phone)) {
-    message.error('请输入正确的11位手机号');
+    showMessage('error', '请输入正确的11位手机号');
     return;
   }
 
@@ -183,10 +206,10 @@ const getCode = async () => {
     // 调用获取验证码接口
     await loginApi.getLoginSmsCode({
       phonenumber: form.value.phone,
-      userType: 1
+      userType: 'customer_user'
     });
     
-    message.success('验证码发送成功，请注意查收');
+    showMessage('success', '验证码发送成功，请注意查收');
     
     // 倒计时逻辑
     let count = 60;
@@ -201,7 +224,7 @@ const getCode = async () => {
       }
     }, 1000);
   } catch (error) {
-    message.error(error.message || '验证码发送失败，请重试');
+    showMessage('error', error.message || '验证码发送失败，请重试');
     codeBtnDisabled.value = false;
   }
 };
@@ -212,15 +235,9 @@ const handleLogin = async () => {
 
   // 1. 协议校验
   if (!form.value.agreement) {
-    message.error('请阅读并同意用户协议和隐私协议');
+    showMessage('error', '请阅读并同意用户协议和隐私协议');
     return;
   }
-
-  // 2. 手机号校验
-  // if (!isPhoneValid(form.value.phone)) {
-  //   message.error('请输入正确的11位手机号');
-  //   return;
-  // }
 
   try {
     isSubmitting.value = true;
@@ -228,12 +245,6 @@ const handleLogin = async () => {
     
     // 3. 构建登录参数
     if (loginType.value === 'password') {
-      // 密码登录参数校验
-      // if (!isPasswordValid(form.value.password)) {
-      //   message.error('密码需6-16位，且包含字母和数字');
-      //   isSubmitting.value = false;
-      //   return;
-      // }
       loginParams = {
         phoneNumber: form.value.phone,
         password: form.value.password,
@@ -242,14 +253,14 @@ const handleLogin = async () => {
     } else {
       // 验证码登录参数校验
       if (!isCodeValid(form.value.code)) {
-        message.error('请输入6位数字验证码');
+        showMessage('error', '请输入6位数字验证码');
         isSubmitting.value = false;
         return;
       }
       loginParams = {
         phoneNumber: form.value.phone,
         smsCode: form.value.code,
-        grantType: 'code'
+        grantType: 'sms'
       };
     }
 
@@ -268,7 +279,7 @@ const handleLogin = async () => {
 
       // 6. 根据用户信息初始化结果处理
       if (initSuccess) {
-        message.success('登录成功，即将跳转');
+        showMessage('success', '登录成功，即将跳转');
         const redirect = route.query.redirect || '/';
         // 延迟跳转，提升用户体验
         setTimeout(() => {
@@ -276,15 +287,15 @@ const handleLogin = async () => {
         }, 1000);
       } else {
         // 用户信息获取失败，提示重新登录
-        message.error('登录成功，但获取用户信息失败，请重新登录');
+        showMessage('error', '登录成功，但获取用户信息失败，请重新登录');
       }
     } else {
       // 登录接口返回无token，登录失败
-      message.error('登录失败，未获取到登录凭证');
+      showMessage('error', '登录失败，未获取到登录凭证');
     }
   } catch (error) {
     // 异常处理
-    message.error(error.message || '登录失败，请重试');
+    showMessage('error', error.message || '登录失败，请重试');
   } finally {
     // 重置提交状态
     isSubmitting.value = false;
@@ -435,6 +446,7 @@ const handleLogin = async () => {
   text-decoration: none;
   font-size: 12px;
   margin-top: 8px;
+  cursor: pointer; /* 新增：添加鼠标指针样式 */
 }
 
 .agreement {

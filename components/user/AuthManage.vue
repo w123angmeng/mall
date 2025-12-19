@@ -21,6 +21,7 @@
 				<div class="personal-warp" v-else>
 					<PersonalAuthForm 
 						:auth-info="personalForm" 
+						:from="'authManage'"
 						:is-submitting="isPersonalSubmitting"
 						@submit="handlePersonalSubmit" 
 						@cancel="handlePersonalCancel" 
@@ -56,7 +57,7 @@
 							</div>
 							<div class="info-item">
 								<span class="info-label">有效期：</span>
-								<span class="info-value">{{ item.longTerm ? '长期有效' : `${item.startDate}至${item.endDate}` }}</span>
+								<span class="info-value">{{ item.longTerm ? '长期有效' : `${item.startDate || ''}至${item.endDate || ''}` }}</span>
 							</div>
 							<div class="info-item">
 								<span class="info-label">法人姓名：</span>
@@ -84,7 +85,7 @@
 							</span>
 						</div>
 					</div>
-					<!-- 新增企业按钮（完全保留原有样式代码） -->
+					<!-- 新增企业按钮 -->
 					<t-button class="add-btn" @click="openEnterpriseDialog(null)">+ 添加新企业</t-button>
 				</div>
 				<!-- 企业认证空状态 -->
@@ -98,18 +99,25 @@
 		<!-- 企业认证弹窗 -->
 		<t-dialog v-model:visible="enterpriseDialogVisible" header="企业认证" width="782px">
 			<EnterpriseAuthForm 
-				:edit-data="enterpriseForm" 
+				ref="authRef"
+				:key="enterpriseForm.id || 'new'"
+				:edit-data="formatEditData(enterpriseForm)" 
 				:is-submitting="isEnterpriseSubmitting"
-				@submit="handleEnterpriseSubmit"
-				@cancel="enterpriseDialogVisible = false" 
+				:isPersonalCenter="true"
+				@uploadSuccess="handleUploadSuccess"
+				@submit="handleChildSubmit"
 			/>
+			<template #footer>
+			    <t-button @click="enterpriseDialogVisible = false">取消</t-button>
+			    <t-button theme="primary" @click="submitEnterpriseForm">提交</t-button>
+			</template>
 		</t-dialog>
 	</div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue';
-import { Button, Dialog, Loading, Message, Icon } from 'tdesign-vue-next';
+import { MessagePlugin } from 'tdesign-vue-next';
 import { getVerifyApi } from '@/apis/credit';
 import PersonalAuthForm from '~/components/auth/PersonalAuthForm.vue';
 import EnterpriseAuthForm from '~/components/auth/EnterpriseAuthForm.vue';
@@ -122,7 +130,7 @@ const authStatus = ref('unauth');
 // 活跃Tab
 const activeTab = ref('personal');
 
-// 个人认证表单
+// 个人认证表单（字段与子组件完全对齐）
 const personalForm = reactive({
 	id: '',
 	cardFront: '',
@@ -142,7 +150,9 @@ const enterpriseList = ref([]);
 const isEnterpriseLoading = ref(false);
 const enterpriseDialogVisible = ref(false);
 const isEnterpriseSubmitting = ref(false);
-const enterpriseForm = reactive({
+
+// 初始化企业表单默认值（抽离为常量，方便重置）
+const DEFAULT_ENTERPRISE_FORM = {
 	id: '',
 	companyName: '',
 	registeredCapital: '',
@@ -157,18 +167,48 @@ const enterpriseForm = reactive({
 	license: '',
 	isDefault: false,
 	salePerson: '',
-	purchaseIntent: ''
-});
+	purchaseIntent: '',
+	originalId: '',
+};
+
+// 企业表单使用ref包裹reactive，确保重置时引用更新
+const enterpriseForm = ref(reactive({ ...DEFAULT_ENTERPRISE_FORM }));
+
+// 企业认证表单Ref
+const authRef = ref(null);
+
+// 格式化编辑数据（父→子字段映射，兼容接口返回的null/特殊格式）
+const formatEditData = (form) => {
+	// 处理注册资本格式：去掉多余小数位（如12.0000 → 12）
+	const formatCapital = (capital) => {
+		if (!capital) return '';
+		return parseFloat(capital).toString();
+	};
+
+	return {
+		id: form.id || '',
+		enterpriseName: form.companyName || '',
+		registeredCapital: formatCapital(form.registeredCapital) || '',
+		socialCreditCode: form.socialCode || '',
+		validDate: [form.startDate || '', form.endDate || ''].filter(Boolean),
+		isLongTerm: form.longTerm === 1 || form.longTerm === true,
+		legalPersonName: form.legalName || '',
+		legalPersonId: form.legalNumber || '',
+		contactName: form.concatName || '',
+		contactPhone: form.concatPhone || '',
+		businessName: form.salePerson || '',
+		tradeIntention: form.purchaseIntent || '',
+		licenseUrl: form.license || ''
+	};
+};
 
 // 页面挂载时加载数据
 onMounted(async () => {
-	// 加载个人认证信息
 	await fetchPersonalCert();
-	// 默认加载企业认证列表
 	await fetchEnterpriseCertList();
 });
 
-// 监听Tab切换，加载对应数据
+// 监听Tab切换
 watch(activeTab, async (newTab) => {
 	if (newTab === 'enterprise') {
 		await fetchEnterpriseCertList();
@@ -177,9 +217,20 @@ watch(activeTab, async (newTab) => {
 	}
 });
 
-// 状态角标图片匹配（完全保留原有逻辑）
+// 状态角标图片匹配
 const getStateBadge = (status) => {
-	switch (status) {
+	// 兼容接口返回的数字状态（0=审核中，1=已认证，2=已驳回）
+	const statusMap = {
+		0: '审核中',
+		1: '已认证',
+		2: '已驳回',
+		'审核中': '审核中',
+		'已认证': '已认证',
+		'已驳回': '已驳回'
+	};
+	const statusText = statusMap[status] || '审核中';
+	
+	switch (statusText) {
 		case '已认证':
 			return '/images/status-passed.png';
 		case '审核中':
@@ -191,542 +242,499 @@ const getStateBadge = (status) => {
 	}
 };
 
-// 切换Tab（完全保留原有逻辑）
+// 切换Tab
 const switchTab = (tab) => {
 	activeTab.value = tab;
 };
 
 // ========== 个人认证相关逻辑 ==========
-// 获取个人认证信息
 const fetchPersonalCert = async () => {
 	try {
 		const res = await verifyApi.getPersonCert();
 		if (res?.data) {
-			Object.assign(personalForm, res.data);
+			// 深度拷贝，避免直接修改响应数据
+			Object.assign(personalForm, { ...res.data });
 			authStatus.value = res.data.id ? 'editing' : 'unauth';
 		}
 	} catch (error) {
-		Message.error('获取个人认证信息失败');
+		MessagePlugin.error('获取个人认证信息失败');
 		console.error(error);
 	}
 };
 
-// 个人认证表单校验
+// 核心修复：校验逻辑与子组件字段对齐
 const validatePersonalForm = () => {
-	if (!personalForm.cardName) {
-		Message.error('请输入姓名');
+	if (!personalForm.cardName.trim()) {
+		MessagePlugin.error('请输入姓名');
 		return false;
 	}
-	// 身份证号校验
 	const idCardReg = /(^\d{18}$)|(^\d{17}(\d|X|x)$)/;
-	if (!idCardReg.test(personalForm.cardNumber)) {
-		Message.error('请输入有效的18位身份证号');
+	if (!idCardReg.test(personalForm.cardNumber.trim())) {
+		MessagePlugin.error('请输入有效的18位身份证号');
 		return false;
 	}
-	// 非长期有效时校验日期
 	if (personalForm.cardLongTerm === 0) {
 		if (!personalForm.cardStart) {
-			Message.error('请选择有效期开始日期');
+			MessagePlugin.error('请选择有效期开始日期');
 			return false;
 		}
 		if (!personalForm.cardEnd) {
-			Message.error('请选择有效期结束日期');
+			MessagePlugin.error('请选择有效期结束日期');
 			return false;
 		}
 		if (new Date(personalForm.cardStart) > new Date(personalForm.cardEnd)) {
-			Message.error('开始日期不能晚于结束日期');
+			MessagePlugin.error('开始日期不能晚于结束日期');
 			return false;
 		}
 	}
-	// 身份证图片校验
 	if (!personalForm.cardFront) {
-		Message.error('请上传身份证正面照片');
+		MessagePlugin.error('请上传身份证正面照片');
 		return false;
 	}
 	if (!personalForm.cardBack) {
-		Message.error('请上传身份证背面照片');
+		MessagePlugin.error('请上传身份证背面照片');
 		return false;
 	}
 	return true;
 };
 
-// 提交个人认证
-const handlePersonalSubmit = async () => {
+// 核心修复：接收子组件传递的对齐字段，并更新到 personalForm
+const handlePersonalSubmit = async (submitData) => {
+	// 1. 将子组件数据同步到父组件表单
+	Object.assign(personalForm, submitData);
+	// 2. 执行父组件校验
 	if (!validatePersonalForm()) return;
 
 	try {
 		isPersonalSubmitting.value = true;
 		if (personalForm.id) {
-			// 修改个人认证
 			await verifyApi.updatePersonCert(personalForm);
-			Message.success('个人认证修改成功，等待审核');
+			MessagePlugin.success('个人认证修改成功，等待审核');
 		} else {
-			// 提交新的个人认证
 			await verifyApi.submitPersonCert(personalForm);
-			Message.success('个人认证提交成功，等待审核');
+			MessagePlugin.success('个人认证提交成功，等待审核');
 		}
 		authStatus.value = 'unauth';
-		// 重新加载数据
 		await fetchPersonalCert();
 	} catch (error) {
-		Message.error(error.message || '个人认证提交失败');
+		MessagePlugin.error(error.message || '个人认证提交失败');
 		console.error(error);
 	} finally {
 		isPersonalSubmitting.value = false;
 	}
 };
 
-// 取消个人认证编辑（完全保留原有逻辑）
 const handlePersonalCancel = () => {
 	authStatus.value = personalForm.id ? 'editing' : 'unauth';
 };
 
 // ========== 企业认证相关逻辑 ==========
-// 获取企业认证列表
 const fetchEnterpriseCertList = async () => {
 	try {
 		isEnterpriseLoading.value = true;
 		const res = await verifyApi.getCompanyCertList();
 		enterpriseList.value = res?.data || [];
 	} catch (error) {
-		Message.error('获取企业认证列表失败');
+		MessagePlugin.error('获取企业认证列表失败');
 		console.error(error);
 	} finally {
 		isEnterpriseLoading.value = false;
 	}
 };
 
-// 企业认证表单校验
-const validateEnterpriseForm = () => {
-	if (!enterpriseForm.companyName) {
-		Message.error('请输入企业名称');
-		return false;
+const handleUploadSuccess = (data) => {
+	if (data.type === 'license') {
+		enterpriseForm.value.license = data.ossId;
 	}
-	if (!enterpriseForm.registeredCapital) {
-		Message.error('请输入注册资本');
-		return false;
-	}
-	// 统一社会信用代码校验
-	const creditReg = /^[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}$/;
-	if (!creditReg.test(enterpriseForm.socialCode)) {
-		Message.error('请输入有效的统一社会信用代码');
-		return false;
-	}
-	if (!enterpriseForm.legalName) {
-		Message.error('请输入法人姓名');
-		return false;
-	}
-	// 法人身份证号校验
-	const idCardReg = /(^\d{18}$)|(^\d{17}(\d|X|x)$)/;
-	if (!idCardReg.test(enterpriseForm.legalNumber)) {
-		Message.error('请输入有效的法人身份证号');
-		return false;
-	}
-	if (!enterpriseForm.concatName) {
-		Message.error('请输入联系人姓名');
-		return false;
-	}
-	// 联系人手机号校验
-	const phoneReg = /^1[3-9]\d{9}$/;
-	if (!phoneReg.test(enterpriseForm.concatPhone)) {
-		Message.error('请输入有效的联系人手机号');
-		return false;
-	}
-	// 非长期有效时校验日期
-	if (enterpriseForm.longTerm === 0) {
-		if (!enterpriseForm.startDate) {
-			Message.error('请选择有效期开始日期');
-			return false;
-		}
-		if (!enterpriseForm.endDate) {
-			Message.error('请选择有效期结束日期');
-			return false;
-		}
-		if (new Date(enterpriseForm.startDate) > new Date(enterpriseForm.endDate)) {
-			Message.error('开始日期不能晚于结束日期');
-			return false;
-		}
-	}
-	// 营业执照校验
-	if (!enterpriseForm.license) {
-		Message.error('请上传营业执照');
-		return false;
-	}
-	return true;
 };
 
-// 打开企业认证弹窗（完全保留原有逻辑）
-const openEnterpriseDialog = (data) => {
-	// 重置表单
-	Object.assign(enterpriseForm, {
-		id: '',
-		companyName: '',
-		registeredCapital: '',
-		socialCode: '',
-		longTerm: 1,
-		startDate: '',
-		endDate: '',
-		legalName: '',
-		legalNumber: '',
-		concatName: '',
-		concatPhone: '',
-		license: '',
-		isDefault: false,
-		salePerson: '',
-		purchaseIntent: ''
-	});
-	// 编辑模式赋值
-	if (data) {
-		Object.assign(enterpriseForm, data);
-	}
-	enterpriseDialogVisible.value = true;
+// 接收子组件提交数据（子→父字段映射）
+const handleChildSubmit = (childData) => {
+	console.log('----childData:', childData)
+	enterpriseForm.value.companyName = childData.enterpriseName || '';
+	enterpriseForm.value.registeredCapital = childData.registeredCapital || '';
+	enterpriseForm.value.socialCode = childData.socialCreditCode || '';
+	enterpriseForm.value.longTerm = childData.isLongTerm ? 1 : 0;
+	enterpriseForm.value.startDate = childData.validDate?.[0] || '';
+	enterpriseForm.value.endDate = childData.validDate?.[1] || '';
+	enterpriseForm.value.legalName = childData.legalPersonName || '';
+	enterpriseForm.value.legalNumber = childData.legalPersonId || '';
+	enterpriseForm.value.concatName = childData.contactName || '';
+	enterpriseForm.value.concatPhone = childData.contactPhone || '';
+	enterpriseForm.value.salePerson = childData.businessName || '';
+	enterpriseForm.value.purchaseIntent = childData.tradeIntention || '';
+	enterpriseForm.value.license = childData.originalId || childData.licenseUrl || enterpriseForm.value.license;
 };
 
-// 提交企业认证
-const handleEnterpriseSubmit = async () => {
-	if (!validateEnterpriseForm()) return;
+// 核心修复：重构弹窗打开方法，彻底重置/赋值数据
+const openEnterpriseDialog = async (data) => {
+	try {
+		// 1. 彻底重置表单（重新赋值，更新引用）
+		enterpriseForm.value = reactive({ ...DEFAULT_ENTERPRISE_FORM });
+
+		// 2. 如果是编辑/查看，处理数据赋值
+		if (data) {
+			// 如果是查看操作，先请求详情接口获取完整数据
+			let detailData = data;
+			if (data.id && !data.companyName) { // 列表项可能字段不全，请求详情
+				const res = await verifyApi.getCertDetail(data.id);
+				if (res?.data?.cert) {
+					detailData = res.data.cert;
+				}
+			}
+
+			// 3. 兼容接口返回的null值，确保字段有默认值
+			Object.assign(enterpriseForm.value, {
+				id: detailData.id || '',
+				companyName: detailData.companyName || '',
+				registeredCapital: detailData.registeredCapital || '',
+				socialCode: detailData.socialCode || '',
+				longTerm: detailData.longTerm === 0 ? 0 : 1, // 兼容null/undefined
+				startDate: detailData.startDate || '',
+				endDate: detailData.endDate || '',
+				legalName: detailData.legalName || '',
+				legalNumber: detailData.legalNumber || '',
+				concatName: detailData.concatName || '',
+				concatPhone: detailData.concatPhone || '',
+				originalId: detailData.originalId || '',
+				license: detailData.license || '',
+				isDefault: detailData.isDefault || false,
+				salePerson: detailData.salePerson || '',
+				purchaseIntent: detailData.purchaseIntent || ''
+			});
+			console.log('-----enterpriseForm.value:', enterpriseForm.value, detailData)
+		}
+
+		// 4. 延迟打开弹窗，确保数据赋值完成（避免渲染时机问题）
+		setTimeout(() => {
+			enterpriseDialogVisible.value = true;
+		}, 0);
+	} catch (error) {
+		MessagePlugin.error('加载企业认证数据失败');
+		console.error(error);
+	}
+};
+
+const submitEnterpriseForm = async () => {
+	const isValid = await authRef.value?.handleSubmit();
+	if (!isValid) return;
 
 	try {
 		isEnterpriseSubmitting.value = true;
-		if (enterpriseForm.id) {
-			// 修改企业认证
-			await verifyApi.updateCompanyCert(enterpriseForm);
-			Message.success('企业认证修改成功，等待审核');
+		if (enterpriseForm.value.id) {
+			await verifyApi.updateCompanyCert(enterpriseForm.value);
+			MessagePlugin.success('企业认证修改成功，等待审核');
 		} else {
-			// 提交新的企业认证
-			await verifyApi.submitCompanyCert(enterpriseForm);
-			Message.success('企业认证提交成功，等待审核');
+			await verifyApi.submitCompanyCert(enterpriseForm.value);
+			MessagePlugin.success('企业认证提交成功，等待审核');
 		}
 		enterpriseDialogVisible.value = false;
-		// 重新加载列表
 		await fetchEnterpriseCertList();
 	} catch (error) {
-		Message.error(error.message || '企业认证提交失败');
+		MessagePlugin.error(error.message || '企业认证提交失败');
 		console.error(error);
 	} finally {
 		isEnterpriseSubmitting.value = false;
 	}
 };
 
-// 查看企业认证详情
+// 核心修复：查看企业详情方法（确保获取完整数据）
 const viewEnterprise = async (item) => {
 	try {
 		const res = await verifyApi.getCertDetail(item.id);
 		if (res?.data?.cert) {
-			// 可打开详情弹窗展示完整信息
-			console.log('企业认证详情：', res.data);
-			// 此处可扩展详情弹窗逻辑
-			openEnterpriseDialog(res?.data?.cert);
+			await openEnterpriseDialog(res.data.cert);
+		} else {
+			MessagePlugin.warning('暂无企业认证详情数据');
 		}
 	} catch (error) {
-		Message.error('获取企业认证详情失败');
+		MessagePlugin.error('获取企业认证详情失败');
 		console.error(error);
 	}
 };
 
-// 编辑企业认证（完全保留原有逻辑）
+// 编辑企业（直接传列表项，openEnterpriseDialog会自动请求详情）
 const editEnterprise = (item) => {
 	openEnterpriseDialog(item);
 };
 
-// 删除企业认证
 const deleteEnterprise = async (item) => {
 	try {
 		await verifyApi.deleteCert(item.id);
-		Message.success('企业认证删除成功');
-		// 重新加载列表
+		MessagePlugin.success('企业认证删除成功');
 		await fetchEnterpriseCertList();
 	} catch (error) {
-		Message.error(error.message || '企业认证删除失败');
+		MessagePlugin.error(error.message || '企业认证删除失败');
 		console.error(error);
 	}
 };
 </script>
 
 <style lang="scss" scoped>
-	.auth-manage {
-		width: 100%;
-		min-height: 500px;
+.auth-manage {
+	width: 100%;
+	min-height: 500px;
+	padding: 20px;
+	box-sizing: border-box;
 
-		// 加载状态（新增，不影响原有样式）
-		.loading-state {
-			display: flex;
-			justify-content: center;
-			align-items: center;
-			height: 300px;
+	.loading-state {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		height: 300px;
+	}
+
+	.personal-warp {
+		width: 560px;
+		margin: 0 auto;
+	}
+
+	.unauth-state {
+		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-direction: column;
+		padding-top: 80px;
+
+		.unauth-icon {
+			width: 218px;
+			height: 148px;
+			margin-bottom: 12px;
 		}
 
-		// 个人认证部分样式（完全保留原有代码）
-		.personal-warp {
-			width: 560px;
-			margin: 0 auto;
-		}
+		.auth-btn {
+			display: block;
+			background: #3799AE;
+			color: #fff;
+			border: none;
 
-		.unauth-state {
-			text-align: center;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-			flex-direction: column;
-			padding-top: 80px;
-
-			.unauth-icon {
-				width: 218px;
-				height: 148px;
-				margin-bottom: 12px;
-			}
-
-			.auth-btn {
-				display: block;
-				background: #3799AE;
-				color: #fff;
-				border: none;
-
-				&:hover {
-					background: #2d8094;
-				}
-			}
-		}
-
-		// 已认证Tab（完全保留原有样式代码）
-		.auth-tabs {
-			width: 100%;
-
-			.tab-header {
-				display: flex;
-				border-bottom: 1px solid #ECEEF2;
-				margin-bottom: 20px;
-
-				.tab-item {
-					padding: 0 20px;
-					height: 40px;
-					line-height: 40px;
-					font-size: 14px;
-					color: #666;
-					cursor: pointer;
-					position: relative;
-
-					&.active {
-						color: #3799AE;
-
-						&::after {
-							content: '';
-							position: absolute;
-							bottom: -1px;
-							left: 0;
-							width: 100%;
-							height: 2px;
-							background: #3799AE;
-						}
-					}
-
-					&:hover {
-						color: #3799AE;
-					}
-				}
-			}
-
-			.tab-content {
-				width: 100%;
-				padding: 0 10px;
-			}
-
-			// 🔥 核心优化：企业认证列表样式（严格保留原有代码）
-			.enterprise-list {
-				display: flex;
-				flex-wrap: wrap;
-				gap: 20px;
-				margin-bottom: 30px;
-
-				// 单个企业卡片（严格尺寸+样式）
-				.enterprise-item {
-					position: relative;
-					width: 254px;
-					height: 272px;
-					border-radius: 4px;
-					// opacity: 0.26;
-					background: url('@/assets/images/card-bg.png') no-repeat center / cover;
-					box-sizing: border-box;
-					border: 1px solid #ECEEF2;
-					display: flex;
-					flex-direction: column;
-					overflow: hidden;
-
-					// 右上角审核状态角标
-					.status-badge {
-						position: absolute;
-						top: 0;
-						right: 0;
-						width: 56px;
-						height: 56px;
-						object-fit: contain;
-						z-index: 1;
-					}
-
-					// 卡片头（严格样式）
-					.card-header {
-						height: 56px;
-						border-radius: 4px 4px 0px 0px;
-						opacity: 1;
-						background: rgba(255, 255, 255, 0.502);
-						box-sizing: border-box;
-						border-bottom: 1px solid #ECEEF2;
-						display: flex;
-						align-items: center;
-						padding: 0 16px;
-
-						.default-tag {
-							display: inline-block;
-							background: #000;
-							color: #fff;
-							font-size: 12px;
-							padding: 2px 8px;
-							border-radius: 4px;
-							margin-right: 8px;
-						}
-
-						.company-name {
-							font-size: 18px;
-							font-weight: 350;
-							line-height: 18px;
-							letter-spacing: 0em;
-							color: #272727;
-						}
-					}
-
-					// 卡片内容区
-					.card-content {
-						flex: 1;
-						padding: 16px;
-						display: flex;
-						flex-direction: column;
-						gap: 12px;
-
-						.info-item {
-							display: flex;
-							align-items: center;
-
-							.info-label {
-								color: #838486;
-								margin-right: 4px;
-							}
-
-							.info-value {
-								color: #272727;
-							}
-						}
-					}
-
-					// 分割线（严格尺寸）
-					.card-divider {
-						width: 354px;
-						height: 1px;
-						opacity: 1;
-						background: #ECEEF2;
-						box-sizing: border-box;
-					}
-
-					// 底部按钮区（严格高度+带图标）
-					.card-footer {
-						height: 48px;
-						display: flex;
-						align-items: center;
-						justify-content: space-between;
-						gap: 16px;
-						padding: 0 16px;
-						background: rgba(255, 255, 255, 0.5);
-						
-						// 通用操作按钮样式（完全保留原有代码）
-						.operate-btn {
-							display: flex;
-							align-items: center;
-							gap: 4px; // 图标和文字间距
-							cursor: pointer; // 鼠标可点击状态
-							transition: all 0.2s ease; // 过渡动画
-					
-							// 图标默认样式
-							:deep(.t-icon) {
-								color: #838486; // 默认灰色
-								transition: color 0.2s ease;
-							}
-					
-							// 文字默认样式
-							.btn-text {
-								font-size: 14px;
-								color: #838486; // 默认灰色
-								transition: color 0.2s ease;
-							}
-					
-							// 鼠标悬浮通用效果
-							&:hover {
-								// 鼠标悬浮时手型（兜底）
-								cursor: pointer;
-							}
-						}
-					
-						// 查看按钮 hover 样式（主题色）
-						.view-btn:hover {
-							:deep(.t-icon) {
-								color: #3799AE !important;
-							}
-							.btn-text {
-								color: #3799AE !important;
-							}
-						}
-					
-						// 修改按钮 hover 样式（主题色）
-						.edit-btn:hover {
-							:deep(.t-icon) {
-								color: #3799AE !important;
-							}
-							.btn-text {
-								color: #3799AE !important;
-							}
-						}
-					
-						// 删除按钮 hover 样式（红色）
-						.delete-btn:hover {
-							:deep(.t-icon) {
-								color: #F53F3F !important;
-							}
-							.btn-text {
-								color: #F53F3F !important;
-							}
-						}
-					}
-				}
-
-				// 新增企业按钮（完全保留原有样式代码，无任何修改）
-				.add-btn {
-					width: 140px;
-					height: 32px;
-					border-radius: 4px;
-					opacity: 1;
-					background: #EEF7F9;
-					box-sizing: border-box;
-					border: 1px solid #93C8D3;
-					color: #3799AE !important;
-					font-size: 14px;
-					padding: 0 !important;
-
-					&:hover {
-						background: #e0f0f5 !important;
-						border-color: #7ab9c9 !important;
-					}
-				}
-			}
-
-			// 空状态（保持原逻辑）
-			.empty-state {
-				text-align: center;
-				padding: 40px 0;
-
-				.empty-text {
-					font-size: 14px;
-					color: #999;
-					margin-bottom: 20px;
-				}
+			&:hover {
+				background: #2d8094;
 			}
 		}
 	}
+
+	.auth-tabs {
+		width: 100%;
+
+		.tab-header {
+			display: flex;
+			border-bottom: 1px solid #ECEEF2;
+			margin-bottom: 20px;
+
+			.tab-item {
+				padding: 0 20px;
+				height: 40px;
+				line-height: 40px;
+				font-size: 14px;
+				color: #666;
+				cursor: pointer;
+				position: relative;
+
+				&.active {
+					color: #3799AE;
+
+					&::after {
+						content: '';
+						position: absolute;
+						bottom: -1px;
+						left: 0;
+						width: 100%;
+						height: 2px;
+						background: #3799AE;
+					}
+				}
+
+				&:hover {
+					color: #3799AE;
+				}
+			}
+		}
+
+		.tab-content {
+			width: 100%;
+			padding: 0 10px;
+		}
+
+		.enterprise-list {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 20px;
+			margin-bottom: 30px;
+
+			.enterprise-item {
+				position: relative;
+				width: 254px;
+				height: 272px;
+				border-radius: 4px;
+				background: url('@/assets/images/card-bg.png') no-repeat center / cover;
+				box-sizing: border-box;
+				border: 1px solid #ECEEF2;
+				display: flex;
+				flex-direction: column;
+				overflow: hidden;
+
+				.status-badge {
+					position: absolute;
+					top: 0;
+					right: 0;
+					width: 56px;
+					height: 56px;
+					object-fit: contain;
+					z-index: 1;
+				}
+
+				.card-header {
+					height: 56px;
+					border-radius: 4px 4px 0px 0px;
+					opacity: 1;
+					background: rgba(255, 255, 255, 0.502);
+					box-sizing: border-box;
+					border-bottom: 1px solid #ECEEF2;
+					display: flex;
+					align-items: center;
+					padding: 0 16px;
+
+					.default-tag {
+						display: inline-block;
+						background: #000;
+						color: #fff;
+						font-size: 12px;
+						padding: 2px 8px;
+						border-radius: 4px;
+						margin-right: 8px;
+					}
+
+					.company-name {
+						font-size: 18px;
+						font-weight: 350;
+						line-height: 18px;
+						letter-spacing: 0em;
+						color: #272727;
+					}
+				}
+
+				.card-content {
+					flex: 1;
+					padding: 16px;
+					display: flex;
+					flex-direction: column;
+					gap: 12px;
+
+					.info-item {
+						display: flex;
+						align-items: center;
+
+						.info-label {
+							color: #838486;
+							margin-right: 4px;
+						}
+
+						.info-value {
+							color: #272727;
+						}
+					}
+				}
+
+				.card-divider {
+					width: 354px;
+					height: 1px;
+					opacity: 1;
+					background: #ECEEF2;
+					box-sizing: border-box;
+				}
+
+				.card-footer {
+					height: 48px;
+					display: flex;
+					align-items: center;
+					justify-content: space-between;
+					gap: 16px;
+					padding: 0 16px;
+					background: rgba(255, 255, 255, 0.5);
+					
+					.operate-btn {
+						display: flex;
+						align-items: center;
+						gap: 4px;
+						cursor: pointer;
+						transition: all 0.2s ease;
+				
+						:deep(.t-icon) {
+							color: #838486;
+							transition: color 0.2s ease;
+						}
+				
+						.btn-text {
+							font-size: 14px;
+							color: #838486;
+							transition: color 0.2s ease;
+						}
+				
+						&:hover {
+							cursor: pointer;
+						}
+					}
+				
+					.view-btn:hover {
+						:deep(.t-icon) {
+							color: #3799AE !important;
+						}
+						.btn-text {
+							color: #3799AE !important;
+						}
+					}
+				
+					.edit-btn:hover {
+						:deep(.t-icon) {
+							color: #3799AE !important;
+						}
+						.btn-text {
+							color: #3799AE !important;
+						}
+					}
+				
+					.delete-btn:hover {
+						:deep(.t-icon) {
+							color: #F53F3F !important;
+						}
+						.btn-text {
+							color: #F53F3F !important;
+						}
+					}
+				}
+			}
+
+			.add-btn {
+				width: 140px;
+				height: 32px;
+				border-radius: 4px;
+				opacity: 1;
+				background: #EEF7F9;
+				box-sizing: border-box;
+				border: 1px solid #93C8D3;
+				color: #3799AE !important;
+				font-size: 14px;
+				padding: 0 !important;
+
+				&:hover {
+					background: #e0f0f5 !important;
+					border-color: #7ab9c9 !important;
+				}
+			}
+		}
+
+		.empty-state {
+			text-align: center;
+			padding: 40px 0;
+
+			.empty-text {
+				font-size: 14px;
+				color: #999;
+				margin-bottom: 20px;
+			}
+		}
+	}
+}
 </style>

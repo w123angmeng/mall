@@ -1,7 +1,32 @@
-import { defineEventHandler, readBody, setResponseHeader } from 'h3';
+// server/middleware/proxy.ts
+import { defineEventHandler, setResponseHeader, createError } from 'h3';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import type { Request, Response } from 'http';
+
+// 适配 h3 的 proxy 处理函数
+function h3ProxyHandler(event: any, options: any) {
+  return new Promise((resolve, reject) => {
+    const { req, res } = event.node;
+    const proxy = createProxyMiddleware(options);
+
+    // 重写 res.end 方法以支持 Promise
+    const originalEnd = res.end;
+    res.end = function (...args: any[]) {
+      originalEnd.apply(res, args);
+      resolve(null);
+    };
+
+    // 处理 proxy 错误
+    proxy(req, res, (err: any) => {
+      if (err) {
+        reject(err);
+      }
+    });
+  });
+}
 
 export default defineEventHandler(async (event) => {
-  // 仅在开发环境启用该本地代理
+  // 仅在开发环境启用代理
   if (process.env.NODE_ENV !== 'development') {
     return;
   }
@@ -9,89 +34,80 @@ export default defineEventHandler(async (event) => {
   const { req, res } = event.node;
   const url = req.url || '';
 
-  // 只代理以 /prod-api 开头的请求
+  // 只代理 /prod-api 开头的请求
   if (!url.startsWith('/prod-api')) {
     return;
   }
 
-  // 目标主机（按需修改）
+  // 目标后端地址
   const target = 'http://36.139.142.188:17504';
 
-  // 去掉 /prod-api 前缀再拼接目标 URL
-  // 例如：/prod-api/yp-resource/... -> /yp-resource/...
-  const pathAfterPrefix = url.replace(/^\/prod-api/, '') || '/';
-  const targetUrl = `${target}${pathAfterPrefix}`;
-
-  // 请求方法
-  const method = (req.method || 'GET').toUpperCase();
-
-  // 读取请求 body（若有）
-  let body: any = undefined;
   try {
-    // readBody 会在没有 body 时返回 {}，做下保护
-    const parsed = await readBody(event);
-    if (parsed && Object.keys(parsed).length > 0) {
-      body = parsed;
-    }
-  } catch (e) {
-    body = undefined;
-  }
-
-  // 复制请求头并移除 host，保留其它头（可按需过滤）
-  const headers: Record<string, string> = {};
-  Object.entries(req.headers || {}).forEach(([k, v]) => {
-    if (!k) return;
-    const lower = k.toLowerCase();
-    if (lower === 'host') return; // 让 fetch 使用目标 Host
-    if (Array.isArray(v)) {
-      headers[k] = v.join(',');
-    } else if (v !== undefined) {
-      headers[k] = String(v);
-    }
-  });
-
-  // 如果 body 存在且没有 content-type，默认用 application/json
-  if (body && !headers['content-type'] && !headers['Content-Type']) {
-    headers['content-type'] = 'application/json';
-  }
-
-  try {
-    const fetchOptions: RequestInit = {
-      method,
-      headers,
-      // GET/HEAD 不应有 body
-      body: ['GET', 'HEAD'].includes(method)
-        ? undefined
-        : (typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body)),
-      redirect: 'follow',
-    };
-
-    const resp = await fetch(targetUrl, fetchOptions);
-
-    // 将后端响应状态原样返回
-    res.statusCode = resp.status;
-
-    // 转发关键响应头（至少 content-type）
-    const contentType = resp.headers.get('content-type') || 'application/octet-stream';
-    setResponseHeader(event, 'content-type', contentType);
-
-    // 返回响应体：如果是 JSON，解析为对象返回；否则返回文本
-    const respText = await resp.text();
-    if (contentType.includes('application/json')) {
-      try {
-        return JSON.parse(respText);
-      } catch (e) {
-        return respText;
-      }
-    } else {
-      return respText;
-    }
+    // 配置代理选项（核心：处理跨域 + 文件上传）
+    await h3ProxyHandler(event, {
+      target,
+      changeOrigin: true, // 关键：修改请求头的 Host 为目标地址
+      pathRewrite: {
+        '^/prod-api': '', // 移除 /prod-api 前缀
+      },
+      // 禁用默认的 bodyParser，避免解析文件流
+      parser: false,
+      // 处理文件上传的流式传输
+      onProxyReq: (proxyReq: any, req: Request) => {
+        // 保留原始请求头（尤其是 multipart/form-data 相关）
+        if (req.headers['content-type']?.includes('multipart/form-data')) {
+          // 移除 content-length 由代理自动计算
+          proxyReq.removeHeader('content-length');
+        }
+        // 传递 Authorization 等关键头
+        if (req.headers.authorization) {
+          proxyReq.setHeader('Authorization', req.headers.authorization);
+        }
+      },
+      // 响应拦截：添加跨域头，转发后端响应头
+      onProxyRes: (proxyRes: any, req: Request, res: Response) => {
+        // 1. 强制添加跨域允许头（覆盖后端或补充缺失）
+        const origin = req.headers.origin || '*';
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Authorization,Content-Type,Accept,Origin,Range');
+        
+        // 2. 转发后端的响应头（如 content-type、set-cookie 等）
+        Object.keys(proxyRes.headers).forEach((key) => {
+          const value = proxyRes.headers[key];
+          if (value) {
+            res.setHeader(key, Array.isArray(value) ? value.join(',') : value);
+          }
+        });
+      },
+      // 超时配置：匹配前端60秒上传超时
+      timeout: 60000,
+      // 处理跨域预检请求（OPTIONS）
+      onError: (err: Error, req: Request, res: Response) => {
+        console.error('代理错误：', err);
+        // 错误响应也必须加跨域头
+        res.writeHead(502, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': req.headers.origin || '*',
+          'Access-Control-Allow-Credentials': 'true',
+        });
+        res.end(JSON.stringify({
+          code: 502,
+          message: '代理请求失败',
+          detail: err.message,
+        }));
+      },
+    });
   } catch (err: any) {
-    res.statusCode = 502;
-    return {
-      error: true,
-      message: 'proxy error',
-      detail: err?.message || String(err),
-    };
+    console.error('代理中间件异常：', err);
+    // 兜底添加跨域头
+    setResponseHeader(event, 'Access-Control-Allow-Origin', req.headers.origin || '*');
+    setResponseHeader(event, 'Access-Control-Allow-Credentials', 'true');
+    throw createError({
+      statusCode: 502,
+      statusMessage: '代理请求失败',
+      data: { detail: err.message },
+    });
   }
 });

@@ -14,11 +14,15 @@
 // app.component('t-empty', Empty);
 </script>
 
-<style global>
+<style global lang="scss">
 /* 全局样式：可放通用样式（如重置样式） */
+@import "@/assets/css/common.scss";
+@import "@/assets/css/theme.css";
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  
 }
 </style>

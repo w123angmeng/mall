@@ -11,6 +11,7 @@ export default defineNuxtRouteMiddleware((to, from) => {
     '/', // 商城首页
     '/login', // 登录页
     '/register', // 注册页
+	'/forgot-password', // 忘记密码
     '/select-auth', // 认证选择页
     '/product/:id', // 商品详情页（示例）
     '/category', // 分类页（示例）

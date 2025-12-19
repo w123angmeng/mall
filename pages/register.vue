@@ -60,11 +60,32 @@
 definePageMeta({ layout: 'auth' });
 
 import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { navigateTo, useRoute, useNuxtApp } from '#app';
+import { navigateTo, useRoute } from '#app';
 import { useUserStore } from '@/stores/user'; // 导入用户Store
 import * as loginApi from '@/apis/login';
+// 核心修改：导入 TDesign 的 MessagePlugin
+import { MessagePlugin } from 'tdesign-vue-next';
 
-const nuxtApp = useNuxtApp();
+// 统一消息提示方法（适配 TDesign MessagePlugin 规范）
+const showMessage = (type, text) => {
+  switch (type) {
+    case 'error':
+      MessagePlugin.error({ content: text });
+      break;
+    case 'success':
+      MessagePlugin.success({ content: text });
+      break;
+    case 'warning':
+      MessagePlugin.warning({ content: text });
+      break;
+    case 'info':
+      MessagePlugin.info({ content: text });
+      break;
+    default:
+      MessagePlugin.info({ content: text });
+  }
+};
+
 const route = useRoute();
 const userStore = useUserStore(); // 初始化用户Store
 const isSubmitting = ref(false);
@@ -82,29 +103,6 @@ const codeBtnDisabled = ref(false);
 let countdownTimer = null;
 let countdown = 0;
 
-const messageRef = ref(null);
-const getMessageInstance = async () => {
-  if (nuxtApp?.$message) {
-    messageRef.value = nuxtApp.$message;
-    return messageRef.value;
-  }
-  if (process.client) {
-    try {
-      const mod = await import('tdesign-vue-next');
-      const useMessage = mod?.useMessage || (mod?.default && mod.default.useMessage);
-      if (typeof useMessage === 'function') {
-        const inst = useMessage();
-        messageRef.value = inst;
-        if (nuxtApp?.vueApp?.config) {
-          nuxtApp.vueApp.config.globalProperties.$message = inst;
-        }
-        return inst;
-      }
-    } catch (e) {}
-  }
-  return undefined;
-};
-
 const isPhoneValid = (phone) => {
   if (!phone) return false;
   return /^1[3-9]\d{9}$/.test(String(phone).trim());
@@ -119,7 +117,7 @@ const isPasswordValid = (password) => {
 };
 
 onMounted(() => {
-  getMessageInstance().catch(() => {});
+  // 移除原有动态获取 message 实例的逻辑
 });
 
 onBeforeUnmount(() => {
@@ -127,16 +125,15 @@ onBeforeUnmount(() => {
 });
 
 const getCode = async () => {
-  const message = messageRef.value ?? (await getMessageInstance());
   if (!isPhoneValid(form.value.phone)) {
-    message?.error?.('请输入正确的11位手机号');
+    showMessage('error', '请输入正确的11位手机号');
     return;
   }
   if (codeBtnDisabled.value) return;
   try {
     codeBtnDisabled.value = true;
     await loginApi.getRegisterSmsCode({ phoneNumber: form.value.phone });
-    message?.success?.('验证码发送成功，请注意查收');
+    showMessage('success', '验证码发送成功，请注意查收');
     countdown = 60;
     codeBtnText.value = `${countdown}s后重发`;
     countdownTimer = setInterval(() => {
@@ -152,7 +149,7 @@ const getCode = async () => {
     }, 1000);
   } catch (err) {
     const errMsg = err?.message || '验证码发送失败，请重试';
-    message?.error?.(errMsg);
+    showMessage('error', errMsg);
     codeBtnDisabled.value = false;
     codeBtnText.value = '获取验证码';
   }
@@ -162,13 +159,13 @@ const getCode = async () => {
  * 自动登录并初始化用户信息
  * @returns {Promise<boolean>} 是否成功
  */
-const autoLoginAndInitUser = async (message) => {
+const autoLoginAndInitUser = async () => {
   try {
     // 1. 调用登录接口（验证码登录，因为注册时用户还没设置密码登录的习惯）
     const loginResult = await loginApi.login({
       phoneNumber: form.value.phone,
-      smsCode: form.value.code, // 复用注册验证码（后端需支持验证码有效期内复用）
-      grantType: 'code' // 验证码登录类型
+      password: form.value.password, // 复用注册验证码（后端需支持验证码有效期内复用）
+      grantType: 'password' // 验证码登录类型
     });
 
     // 2. 初始化用户信息（调用Store方法）
@@ -181,54 +178,36 @@ const autoLoginAndInitUser = async (message) => {
     if (initSuccess) {
       return true;
     } else {
-      message?.error?.('用户信息获取失败，请手动登录');
+      showMessage('error', '用户信息获取失败，请手动登录');
       return false;
     }
   } catch (loginErr) {
     // 登录失败处理（比如验证码过期，改用密码登录）
-    try {
-      const passwordLoginResult = await loginApi.login({
-        phoneNumber: form.value.phone,
-        password: form.value.password,
-        grantType: 'password'
-      });
-
-      const initSuccess = await userStore.initUserInfo({
-        token: passwordLoginResult.token,
-        refreshToken: passwordLoginResult.refreshToken || '',
-        phone: form.value.phone
-      });
-
-      return initSuccess;
-    } catch (passwordErr) {
-      message?.error?.(`自动登录失败：${passwordErr.message || '请手动登录'}`);
-      return false;
-    }
+    showMessage('error', `自动登录失败：${loginErr.message || '请手动登录'}`);
+    return false;
   }
 };
 
 const handleRegister = async () => {
-  const message = messageRef.value ?? (await getMessageInstance());
-  
   // 基础校验
   if (!form.value.agreement) {
-    message?.error?.('请阅读并同意用户协议和隐私协议');
+    showMessage('error', '请阅读并同意用户协议和隐私协议');
     return;
   }
   if (!isPhoneValid(form.value.phone)) {
-    message?.error?.('请输入正确的11位手机号');
+    showMessage('error', '请输入正确的11位手机号');
     return;
   }
   if (!isCodeValid(form.value.code)) {
-    message?.error?.('请输入6位数字验证码');
+    showMessage('error', '请输入6位数字验证码');
     return;
   }
   if (!isPasswordValid(form.value.password)) {
-    message?.error?.('密码需6-16位，且包含字母和数字');
+    showMessage('error', '密码需6-16位，且包含字母和数字');
     return;
   }
   if (form.value.password !== form.value.rePassword) {
-    message?.error?.('两次输入的密码不一致');
+    showMessage('error', '两次输入的密码不一致');
     return;
   }
 
@@ -242,14 +221,14 @@ const handleRegister = async () => {
       password: form.value.password
     });
 
-    message?.success?.('注册成功，正在为您自动登录...');
+    showMessage('success', '注册成功，正在为您自动登录...');
 
     // 2. 核心：自动登录并初始化用户信息
-    const loginSuccess = await autoLoginAndInitUser(message);
+    const loginSuccess = await autoLoginAndInitUser();
     
     if (loginSuccess) {
       // 3. 登录成功：跳转到认证选择页
-      message?.success?.('登录成功，即将跳转到认证选择页');
+      showMessage('success', '登录成功，即将跳转到认证选择页');
       setTimeout(() => {
         navigateTo('/select-auth'); // 跳转到认证选择页
       }, 1200);
@@ -261,7 +240,7 @@ const handleRegister = async () => {
     }
   } catch (err) {
     const errMsg = err?.message || '注册失败，请重试';
-    message?.error?.(errMsg);
+    showMessage('error', errMsg);
   } finally {
     isSubmitting.value = false;
   }
@@ -361,7 +340,7 @@ const handleRegister = async () => {
   outline: none !important;
   box-shadow: none !important;
   color: #3799AE;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
   flex-shrink: 0;
   display: flex;

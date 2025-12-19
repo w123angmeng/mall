@@ -7,7 +7,7 @@
   --theme-text-secondary: #666666; /* 次要文字色 */
   --theme-text-light: #999999; /* 浅色文字 */
   --theme-border: #E5E5E5; /* 边框色 */
-  --theme-bg: #F5F7FA; /* 页面背景色（匹配UI的浅蓝底） */
+  --theme-bg: #F4F6FA; /* 页面背景色（匹配UI的浅蓝底） */
   --theme-white: #FFFFFF; /* 白色背景 */
   --gap-xs: 4px;
   --gap-sm: 8px;
@@ -94,3 +94,5 @@ body {
 }
 .text-sm { font-size: var(--font-sm); color: var(--theme-text-light); }
 .text-secondary { color: var(--theme-text-secondary); }
+
+

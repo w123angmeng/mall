@@ -1,14 +1,14 @@
 // apis/address.js
 import { useRequest } from '@/composables/useRequest';
 
-const { get, post, put, delete: del } = useRequest();
-
 /**
  * 根据父级ID获取区域列表
  * @param {Object} params - 查询参数
  * @param {string|number} params.parentId - 父级区域ID
  */
 export const getAreaListByParentId = async (params) => {
+  // ✅ Initialize useRequest inside function (Nuxt context safe)
+  const { get } = useRequest();
   return await get('/area/list', params);
 };
 
@@ -16,6 +16,7 @@ export const getAreaListByParentId = async (params) => {
  * 获取省份列表
  */
 export const getProvinces = async () => {
+  const { get } = useRequest();
   return await get('/area/provinces');
 };
 
@@ -25,6 +26,7 @@ export const getProvinces = async () => {
  * @param {string|number} params.provinceId - 省份ID
  */
 export const getCities = async (params) => {
+  const { get } = useRequest();
   return await get('/area/cities', params);
 };
 
@@ -34,6 +36,7 @@ export const getCities = async (params) => {
  * @param {string|number} params.cityId - 城市ID
  */
 export const getDistricts = async (params) => {
+  const { get } = useRequest();
   return await get('/area/districts', params);
 };
 
@@ -43,6 +46,7 @@ export const getDistricts = async (params) => {
  * @param {string|number} params.districtId - 区县ID
  */
 export const getStreets = async (params) => {
+  const { get } = useRequest();
   return await get('/area/streets', params);
 };
 
@@ -64,6 +68,7 @@ export const getStreets = async (params) => {
  * @param {boolean} data.isDefault - 是否默认地址
  */
 export const addAddress = async (data) => {
+  const { post } = useRequest();
   return await post('/address/add', data);
 };
 
@@ -86,6 +91,7 @@ export const addAddress = async (data) => {
  * @param {boolean} data.isDefault - 是否默认地址
  */
 export const updateAddress = async (data) => {
+  const { put } = useRequest();
   return await put('/address/update', data);
 };
 
@@ -93,7 +99,8 @@ export const updateAddress = async (data) => {
  * 删除收货地址
  * @param {string|number} addressId - 地址ID
  */
-export const deleteAddress = async (addressId) => {
+export const deleteAddressApi = async (addressId) => {
+  const { delete: del } = useRequest();
   return await del(`/address/delete/${addressId}`);
 };
 
@@ -101,6 +108,7 @@ export const deleteAddress = async (addressId) => {
  * 获取收货地址列表
  */
 export const getAddressList = async () => {
+  const { get } = useRequest();
   return await get('/address/list');
 };
 
@@ -109,6 +117,7 @@ export const getAddressList = async () => {
  * @param {string|number} addressId - 地址ID
  */
 export const getAddressDetail = async (addressId) => {
+  const { get } = useRequest();
   return await get(`/address/detail/${addressId}`);
 };
 
@@ -116,5 +125,6 @@ export const getAddressDetail = async (addressId) => {
  * 获取默认收货地址
  */
 export const getDefaultAddress = async () => {
+  const { get } = useRequest();
   return await get('/address/default');
 };

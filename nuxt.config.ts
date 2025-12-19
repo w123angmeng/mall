@@ -21,6 +21,7 @@ export default defineNuxtConfig({
       // 公开变量（客户端+服务端可访问，需放在public对象中）
       public: {
         apiBaseUrl: process.env.NUXT_PUBLIC_API_BASE_URL || '/prod-api', // 接口基础地址
+		uploadTimeout: 60000, 
         env: process.env.NUXT_PUBLIC_ENV, // 环境标记
         requestTimeout: Number(process.env.NUXT_PUBLIC_REQUEST_TIMEOUT) || 10000, // 超时时间（默认10秒）
       },
