@@ -31,10 +31,10 @@
           @mouseenter="openLevel3Panel(level2.id)"
           @click.stop="activeLevel2Id = level2.id"
         >
-          <!-- 二级分类图片（36*25） -->
+          <!-- 二级分类图片（36*25）：接口中是icon字段 -->
           <img 
-            v-if="level2.image" 
-            :src="level2.image" 
+            v-if="level2.icon" 
+            :src="level2.icon" 
             alt="二级分类图标" 
             class="category-img level2-img"
           />
@@ -54,10 +54,10 @@
               :key="level3.id"
               class="level3-item"
             >
-              <!-- 三级分类图片（36*25） -->
+              <!-- 三级分类图片（36*25）：接口中是icon字段 -->
               <img 
-                v-if="level3.image" 
-                :src="level3.image" 
+                v-if="level3.icon" 
+                :src="level3.icon" 
                 alt="三级分类图标" 
                 class="category-img level3-img"
               />
@@ -88,82 +88,93 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
+import { useAsyncData } from '#imports';
+import { getHomeCategoryList } from '@/apis/home';
 
-// 一级分类数据（模拟多数据，触发滚动）
-const level1Data = ref([
-  { id: 1, name: "无纺布针刺毯" },
-  { id: 2, name: "机织过滤布" },
-  { id: 3, name: "过滤网带/干网" },
-  { id: 4, name: "压榨、污泥脱水类" },
-  { id: 5, name: "真空干燥类" },
-  { id: 6, name: "物料输送类" },
-  { id: 7, name: "脱硫类" },
-  { id: 8, name: "透气层布" },
-  { id: 9, name: "化纤" },
-  { id: 10, name: "分类十型" },
-  { id: 11, name: "分类十一型" },
-  { id: 12, name: "分类十二型" }
-]);
+// ===================== 1. 模拟数据（适配接口嵌套结构：childList） =====================
+// 一级分类模拟数据（和接口结构一致）
+const defaultLevel1Data = [
+  {
+    id: "1991424976001814529",
+    name: "无纺布针刺毯",
+    level: 1,
+    childList: [ // 二级分类
+      {
+        id: "1993502427078336513",
+        name: "除尘袋",
+        level: 2,
+        icon: "/images/level.png",
+        childList: [ // 三级分类
+          { id: "1993502427078336514", name: "MX芳纶系列滤袋", level: 3, icon: "/images/level.png" },
+          { id: "1993502427078336515", name: "MX涤纶系列滤袋", level: 3, icon: "/images/level.png" },
+          { id: "1993502427078336516", name: "MX丙纶系列滤袋", level: 3, icon: "/images/level.png" }
+        ]
+      },
+      {
+        id: "1993502427078336517",
+        name: "过滤毡",
+        level: 2,
+        icon: "/images/level.png",
+        childList: [
+          { id: "1993502427078336518", name: "高温过滤毡", level: 3, icon: "/images/level.png" },
+          { id: "1993502427078336519", name: "耐酸碱过滤毡", level: 3, icon: "/images/level.png" }
+        ]
+      }
+    ]
+  },
+  {
+    id: "1991424976001814530",
+    name: "机织过滤布",
+    level: 1,
+    childList: [
+      {
+        id: "1993502427078336520",
+        name: "工业滤布",
+        level: 2,
+        icon: "/images/level.png",
+        childList: [
+          { id: "1993502427078336521", name: "高温机织滤布", level: 3, icon: "/images/level3-10.png" },
+          { id: "1993502427078336522", name: "耐酸碱机织滤布", level: 3, icon: "/images/level3-11.png" }
+        ]
+      }
+    ]
+  },
+  { id: "1991424976001814531", name: "过滤网带/干网", level: 1, childList: [] },
+  { id: "1991424976001814532", name: "压榨、污泥脱水类", level: 1, childList: [] },
+  { id: "1991424976001814533", name: "真空干燥类", level: 1, childList: [] },
+  { id: "1991424976001814534", name: "物料输送类", level: 1, childList: [] },
+  { id: "1991424976001814535", name: "脱硫类", level: 1, childList: [] },
+  { id: "1991424976001814536", name: "透气层布", level: 1, childList: [] },
+  { id: "1991424976001814537", name: "化纤", level: 1, childList: [] },
+  { id: "1991424976001814538", name: "分类十型", level: 1, childList: [] },
+  { id: "1991424976001814539", name: "分类十一型", level: 1, childList: [] },
+  { id: "1991424976001814540", name: "分类十二型", level: 1, childList: [] }
+];
 
-// 三级分类数据：一级→二级→三级（新增图片字段）
-const categoryData = ref({
-  1: [ // 无纺布针刺毯的二级/三级（带图片）
-    {
-      id: 11,
-      name: "除尘袋",
-      image: "/images/level.png", // 图片放public/images目录
-      children: [
-        { id: 111, name: "MX芳纶系列滤袋", image: "/images/level.png" },
-        { id: 112, name: "MX涤纶系列滤袋", image: "/images/level.png" },
-        { id: 113, name: "MX丙纶系列滤袋", image: "/images/level.png" },
-        { id: 114, name: "MX玻纤系列滤袋", image: "/images/level.png" }
-      ]
-    },
-    {
-      id: 12,
-      name: "过滤毡",
-      image: "/images/level.png",
-      children: [
-        { id: 121, name: "高温过滤毡", image: "/images/level.png" },
-        { id: 122, name: "耐酸碱过滤毡", image: "/images/level.png" }
-      ]
-    },
-    {
-      id: 13,
-      name: "过滤棉",
-      image: "/images/level.png",
-      children: [
-        { id: 131, name: "初效过滤棉", image: "/images/level.png" },
-        { id: 132, name: "中效过滤棉", image: "/images/level.png" },
-        { id: 133, name: "高效过滤棉", image: "/images/level.png" }
-      ]
+// ===================== 2. 调用接口获取分类数据（适配新结构） =====================
+const { data: categoryRes } = useAsyncData('homeCategory', () => getHomeCategoryList(), {
+  transform: (res) => {
+    console.log('------分类接口返回：', res);
+    // 接口数据校验：code=200 且 data是数组且有数据
+    if (res?.code === 200 && Array.isArray(res.data) && res.data.length) {
+      // 直接返回接口的一级分类数组（自带childList嵌套）
+      return res.data;
     }
-  ],
-  2: [ // 机织过滤布的二级/三级
-    {
-      id: 21,
-      name: "工业滤布",
-      image: "/images/level.png",
-      children: [
-        { id: 211, name: "高温机织滤布", image: "/images/level3-10.png" },
-        { id: 212, name: "耐酸碱机织滤布", image: "/images/level3-11.png" }
-      ]
-    },
-    {
-      id: 22,
-      name: "食品级滤布",
-      image: "/images/level.png",
-      children: [
-        { id: 221, name: "淀粉过滤布", image: "/images/level.png" },
-        { id: 222, name: "果汁过滤布", image: "/images/level.png" },
-        { id: 223, name: "食用油过滤布", image: "/images/level.png" }
-      ]
-    }
-  ]
+    // 接口无有效数据，返回模拟数据
+    return defaultLevel1Data;
+  },
+  server: false // 调试阶段强制客户端请求，生产可改回true
 });
 
-// 激活的一级/二级分类ID
+// ===================== 3. 响应式数据处理 =====================
+// 一级分类数据（优先接口，兜底模拟）
+const level1Data = computed(() => {
+  return categoryRes.value || defaultLevel1Data;
+});
+
+// ===================== 4. 重构二级/三级数据获取逻辑（从childList查找） =====================
+// 激活的一级/二级分类ID（注意接口中id是字符串，需保持类型一致）
 const activeLevel1Id = ref(null);
 const activeLevel2Id = ref(null);
 
@@ -178,27 +189,34 @@ const openLevel3Panel = (id) => {
   activeLevel2Id.value = id;
 };
 
-// 获取二级数据
+// 获取二级数据：根据一级ID查找对应的childList
 const getLevel2Data = (level1Id) => {
-  return categoryData.value[level1Id] || [];
+  // 找到当前一级分类
+  const currentLevel1 = level1Data.value.find(item => item.id === level1Id);
+  // 返回二级分类数组（兜底空数组）
+  return currentLevel1?.childList || [];
 };
 
-// 获取三级数据
+// 获取三级数据：先找一级→再找二级→返回二级的childList
 const getLevel3Data = (level2Id) => {
-  const targetLevel1 = Object.keys(categoryData.value).find(key => {
-    return categoryData.value[key].some(item => item.id === level2Id);
-  });
-  if (!targetLevel1) return [];
-  return categoryData.value[targetLevel1].find(item => item.id === level2Id)?.children || [];
+  // 遍历所有一级分类，找到包含当前二级ID的一级分类
+  let targetLevel2 = null;
+  for (const level1 of level1Data) {
+    targetLevel2 = level1.childList.find(item => item.id === level2Id);
+    if (targetLevel2) break;
+  }
+  // 返回三级分类数组（兜底空数组）
+  return targetLevel2?.childList || [];
 };
 
+// ===================== 5. 原有交互逻辑（保留） =====================
 // 查看全部按钮点击事件（可扩展跳转逻辑）
 const handleViewAll = (type, id) => {
   console.log(`查看全部-${type}`, id);
   // 实际项目可跳转：navigateTo(`/category/${type}/${id}`);
 };
 
-// 🔥 修复bug：鼠标离开分类树区域时，清空激活状态，关闭所有面板
+// 鼠标离开分类树区域时，清空激活状态
 const handleSidebarLeave = () => {
   activeLevel1Id.value = null;
   activeLevel2Id.value = null;
@@ -206,6 +224,7 @@ const handleSidebarLeave = () => {
 </script>
 
 <style lang="scss" scoped>
+/* 样式部分完全不变，复用原有样式 */
 .category-sidebar {
   width: 180px;
   position: relative;
@@ -213,23 +232,20 @@ const handleSidebarLeave = () => {
   height: 400px;
   padding: 12px 0;
   box-sizing: border-box;
-  // 🔥 核心1：整体添加轻微好看的阴影（四周柔和阴影）
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
-  border-radius: 4px; // 轻微圆角，搭配阴影更美观
+  border-radius: 4px;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
-  overflow: visible; // 确保阴影和二级面板不被截断
+  overflow: visible;
 
-  // 1. 一级分类滚动条隐藏但可滚动
   .level1-list {
     list-style: none;
     padding: 0;
     margin: 0;
-    height: calc(400px - 24px); // 减去上下padding:12px*2
+    height: calc(400px - 24px);
     max-height: calc(400px - 24px);
     overflow-y: auto;
 
-    // 隐藏滚动条但保留滚动功能
     &::-webkit-scrollbar {
       display: none;
     }
@@ -265,32 +281,27 @@ const handleSidebarLeave = () => {
     }
   }
 
-  // 2. 二级面板布局（水平展开）
   .level2-panel {
     position: absolute;
-    left: 180px; // 与一级面板宽度对齐
-    top: 0px; // 匹配一级面板的top padding，视觉对齐
+    left: 180px;
+    top: 0px;
     width: 800px;
     background: #fff;
-    // 🔥 核心2：去掉左侧边框，保留其他边框，与一级面板无缝衔接
-    // border: 1px solid #eee;
     border-left: none;
-    // 🔥 阴影继承整体，无需单独加阴影
     padding: 12px;
     z-index: 90;
     display: flex;
     gap: 20px;
-    height: calc(400px); // 与一级列表高度一致，底部对齐
-    border-top-right-radius: 4px; // 与整体圆角匹配
+    height: calc(400px);
+    border-top-right-radius: 4px;
     border-bottom-right-radius: 4px;
 
-    // 二级分类列表（最多两行）
     .level2-list {
       width: 200px;
       display: grid;
       grid-template-rows: repeat(auto-fit, minmax(40px, 1fr));
       gap: 8px;
-      max-height: 88px; // 两行：40*2 + 8gap = 88
+      max-height: 88px;
       overflow: hidden;
 
       .level2-item {
@@ -303,7 +314,6 @@ const handleSidebarLeave = () => {
         cursor: pointer;
         position: relative;
 
-        // 二级分类图片（36*25）
         .level2-img {
           width: 36px;
           height: 25px;
@@ -316,7 +326,6 @@ const handleSidebarLeave = () => {
           flex: 1;
         }
 
-        // 二级箭头样式
         .level2-arrow {
           font-size: 14px;
           font-weight: bold;
@@ -336,7 +345,6 @@ const handleSidebarLeave = () => {
       }
     }
 
-    // 3. 三级面板布局
     .level3-panel {
       flex: 1;
       display: flex;
@@ -344,7 +352,7 @@ const handleSidebarLeave = () => {
       justify-content: space-between;
 
       .level3-list-wrap {
-        max-height: 88px; // 两行：40*2 + 8gap
+        max-height: 88px;
         overflow: hidden;
 
         .level3-list {
@@ -363,7 +371,6 @@ const handleSidebarLeave = () => {
             padding: 0 10px;
             cursor: pointer;
 
-            // 三级分类图片（36*25）
             .level3-img {
               width: 36px;
               height: 25px;
@@ -384,7 +391,6 @@ const handleSidebarLeave = () => {
         }
       }
 
-      // 4. 查看全部按钮（严格匹配要求样式）
       .view-all-btn {
         width: 151px;
         height: 42px;
@@ -403,7 +409,6 @@ const handleSidebarLeave = () => {
           color: #2d8094;
         }
 
-        // 二级查看全部按钮位置调整
         &.level2-view-all {
           margin-top: 10px;
           align-self: flex-start;

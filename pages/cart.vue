@@ -17,62 +17,62 @@
         <!-- 有商品状态（图1） -->
         <div class="cart-has-goods" v-if="cartList.length > 0">
           <!-- 表头 -->
-		  <div class="cart-has-goods-content">
-          <div class="cart-header">
-            <div class="cart-col select-col">
-              <!-- 自定义复选框容器 -->
-              <label class="custom-checkbox">
-                <input type="checkbox" v-model="isAllChecked" class="checkbox-input">
-                <span class="checkbox-icon"></span>
-                <span class="checkbox-text">全选</span>
-              </label>
-            </div>
-            <div class="cart-col goods-col">商品</div>
-            <div class="cart-col price-col">单价</div>
-            <div class="cart-col count-col">数量</div>
-            <div class="cart-col subtotal-col">小计</div>
-            <div class="cart-col opt-col">操作</div>
-          </div>
-
-          <!-- 商品列表 -->
-          <div class="cart-goods-list">
-            <div class="cart-goods-item" v-for="(item, idx) in cartList" :key="idx">
+          <div class="cart-has-goods-content">
+            <div class="cart-header">
               <div class="cart-col select-col">
                 <!-- 自定义复选框容器 -->
                 <label class="custom-checkbox">
-                  <input type="checkbox" v-model="item.checked" @change="checkSingle" class="checkbox-input">
+                  <input type="checkbox" v-model="isAllChecked" class="checkbox-input">
                   <span class="checkbox-icon"></span>
+                  <span class="checkbox-text">全选</span>
                 </label>
               </div>
-              <div class="cart-col goods-col">
-                <img :src="item.img" alt="商品图" class="goods-img">
-                <div class="goods-info">
-                  <div class="goods-name">{{ item.name }}</div>
-                  <div class="goods-spec">{{ item.spec }}</div>
+              <div class="cart-col goods-col">商品</div>
+              <div class="cart-col price-col">单价</div>
+              <div class="cart-col count-col">数量</div>
+              <div class="cart-col subtotal-col">小计</div>
+              <div class="cart-col opt-col">操作</div>
+            </div>
+
+            <!-- 商品列表 -->
+            <div class="cart-goods-list">
+              <div class="cart-goods-item" v-for="(item, idx) in cartList" :key="item.cartId">
+                <div class="cart-col select-col">
+                  <!-- 自定义复选框容器 -->
+                  <label class="custom-checkbox">
+                    <input type="checkbox" v-model="item.checked" @change="checkSingle" class="checkbox-input">
+                    <span class="checkbox-icon"></span>
+                  </label>
                 </div>
-              </div>
-              <div class="cart-col price-col">
-                <span class="current-price">¥{{ item.price }}</span>
-                <span class="original-price">¥{{ item.originalPrice }}</span>
-              </div>
-              <div class="cart-col count-col">
-                <button class="count-btn minus-btn" @click="changeCount(idx, 'minus')" :disabled="item.count <= 1">
-                  -
-                </button>
-                <span class="count-num">{{ item.count }}</span>
-                <button class="count-btn plus-btn" @click="changeCount(idx, 'plus')">
-                  +
-                </button>
-              </div>
-              <div class="cart-col subtotal-col">
-                <span class="subtotal-price">¥{{ (item.price * item.count).toFixed(0) }}</span>
-              </div>
-              <div class="cart-col opt-col">
-                <button class="delete-btn" @click="deleteGoods(idx)">删除</button>
+                <div class="cart-col goods-col">
+                  <img :src="item.firstImage || '/images/product.png'" alt="商品图" class="goods-img">
+                  <div class="goods-info">
+                    <div class="goods-name">{{ item.productName }}</div>
+                    <div class="goods-spec">{{ item.specText || '无规格' }}</div>
+                  </div>
+                </div>
+                <div class="cart-col price-col">
+                  <span class="current-price">¥{{ item.salePrice }}</span>
+                  <span class="original-price">¥{{ item.strikePrice }}</span>
+                </div>
+                <div class="cart-col count-col">
+                  <button class="count-btn minus-btn" @click="changeCount(item, 'minus')" :disabled="item.cartNum <= 1">
+                    -
+                  </button>
+                  <span class="count-num">{{ item.cartNum }}</span>
+                  <button class="count-btn plus-btn" @click="changeCount(item, 'plus')">
+                    +
+                  </button>
+                </div>
+                <div class="cart-col subtotal-col">
+                  <span class="subtotal-price">¥{{ (item.salePrice * item.cartNum).toFixed(0) }}</span>
+                </div>
+                <div class="cart-col opt-col">
+                  <button class="delete-btn" @click="showDeleteConfirm(item.cartId)">删除</button>
+                </div>
               </div>
             </div>
           </div>
-		  </div>
           <!-- 底部操作栏 -->
           <div class="cart-footer">
             <div class="footer-left">
@@ -82,7 +82,7 @@
                 <span class="checkbox-icon"></span>
                 <span class="checkbox-text">全选</span>
               </label>
-              <button class="delete-selected-btn" @click="deleteSelected" :disabled="selectedCount === 0">
+              <button class="delete-selected-btn" @click="showBatchDeleteConfirm" :disabled="selectedCount === 0">
                 删除选中商品
               </button>
             </div>
@@ -90,7 +90,7 @@
               <div class="total-amount">
                 总计: <span class="total-price">¥{{ totalAmount.toFixed(0) }}</span>
               </div>
-              <button class="settle-btn" :disabled="selectedCount === 0">
+              <button class="settle-btn" :disabled="selectedCount === 0" @click="handleSettle">
                 结算 ({{ selectedCount }})
               </button>
             </div>
@@ -119,53 +119,25 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useRouter } from '#app';
+// 导入 TDesign 提示组件
+import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next';
 import Header from '@/components/common/Header.vue';
 import Footer from '@/components/common/Footer.vue';
 import GuessYouLike from '@/components/GuessYouLike.vue';
+// 参考user.js的调用方式，导入getCartApi
+import { getCartApi } from '@/apis/cart';
 
 const router = useRouter();
-// const cartList = ref([])
-// 购物车商品数据（模拟）
-const cartList = ref([
-  {
-    id: 'cart001',
-    img: '/images/product.png',
-    name: 'nova Flip5 256GB 星耀黑 双卡全网通版',
-    spec: '规格信息规格信息',
-    price: 499,
-    originalPrice: 4999,
-    count: 2,
-    checked: true
-  },
-  {
-    id: 'cart002',
-    img: '/images/product.png',
-    name: 'nova Flip5 256GB 星耀黑 双卡全网通版',
-    spec: '规格信息规格信息',
-    price: 499,
-    originalPrice: 4999,
-    count: 2,
-    checked: true
-  }
-  // 清空数组可切换为空购物车状态
-]);
+// 核心：在setup函数内初始化cartApi（确保Nuxt上下文）
+const cartApi = getCartApi();
 
+// 购物车商品数据
+const cartList = ref([]);
 // 全选状态
-const isAllChecked = ref(true);
-
-// 选中商品数量（计算属性）
-const selectedCount = computed(() => {
-  return cartList.value.filter(item => item.checked).reduce((sum, item) => sum + item.count, 0);
-});
-
-// 总计金额（计算属性）
-const totalAmount = computed(() => {
-  return cartList.value.filter(item => item.checked).reduce((sum, item) => sum + (item.price * item.count), 0);
-});
-
-// 猜您喜欢商品数据（模拟）
+const isAllChecked = ref(false);
+// 猜您喜欢商品数据
 const guessGoods = ref([
   {
     img: '/images/product.png',
@@ -193,6 +165,40 @@ const guessGoods = ref([
   }
 ]);
 
+// 加载购物车列表（调用方式参考user.js）
+const loadCartList = async () => {
+  try {
+    const res = await cartApi.getCartList();
+    if (res.code === 200) {
+      // 给每个商品添加选中状态
+      cartList.value = res.data.map(item => ({
+        ...item,
+        checked: false // 默认未选中
+      }));
+      // 初始化全选状态
+      checkSingle();
+    } else {
+      console.error('获取购物车列表失败：', res.msg);
+      MessagePlugin.error(`获取购物车失败：${res.msg || '系统异常'}`);
+      cartList.value = [];
+    }
+  } catch (error) {
+    console.error('获取购物车列表异常：', error);
+    MessagePlugin.error('获取购物车失败，请稍后重试');
+    cartList.value = [];
+  }
+};
+
+// 选中商品数量（计算属性）
+const selectedCount = computed(() => {
+  return cartList.value.filter(item => item.checked).reduce((sum, item) => sum + item.cartNum, 0);
+});
+
+// 总计金额（计算属性）
+const totalAmount = computed(() => {
+  return cartList.value.filter(item => item.checked).reduce((sum, item) => sum + (item.salePrice * item.cartNum), 0);
+});
+
 // 监听全选状态
 watch(isAllChecked, (newVal) => {
   cartList.value.forEach(item => {
@@ -202,31 +208,132 @@ watch(isAllChecked, (newVal) => {
 
 // 单个商品选中状态变化，同步全选
 const checkSingle = () => {
+  if (cartList.value.length === 0) {
+    isAllChecked.value = false;
+    return;
+  }
   const allChecked = cartList.value.every(item => item.checked);
   isAllChecked.value = allChecked;
 };
 
 // 数量变更
-const changeCount = (idx, type) => {
-  if (type === 'minus') {
-    cartList.value[idx].count--;
-  } else {
-    cartList.value[idx].count++;
+const changeCount = async (item, type) => {
+  try {
+    let newCount = item.cartNum;
+    if (type === 'minus') {
+      newCount = Math.max(1, item.cartNum - 1);
+    } else {
+      newCount = item.cartNum + 1;
+    }
+    
+    // 调用更新数量接口（参考user.js调用风格）
+    const res = await cartApi.updateCartNum({
+      cartId: item.cartId,
+      cartNum: newCount
+    });
+    
+    if (res.code === 200) {
+      // 更新本地数据
+      item.cartNum = newCount;
+      MessagePlugin.success('数量更新成功');
+    } else {
+      MessagePlugin.error(`更新数量失败：${res.msg || '系统异常'}`);
+    }
+  } catch (error) {
+    console.error('更新购物车数量异常：', error);
+    MessagePlugin.error('更新数量失败，请稍后重试');
   }
 };
 
+// 单个商品删除确认弹窗
+const showDeleteConfirm = (cartId) => {
+  DialogPlugin.confirm({
+    title: '确认删除',
+    content: '确定要删除该商品吗？',
+    confirmBtn: { content: '确认' },
+    cancelBtn: { content: '取消' },
+    onConfirm: () => deleteGoods(cartId),
+    onCancel: () => MessagePlugin.info('已取消删除')
+  });
+};
+
+// 批量删除确认弹窗
+const showBatchDeleteConfirm = () => {
+  const selectedItems = cartList.value.filter(item => item.checked);
+  if (selectedItems.length === 0) return;
+
+  DialogPlugin.confirm({
+    title: '确认删除',
+    content: '确定要删除选中的商品吗？',
+    confirmBtn: { content: '确认' },
+    cancelBtn: { content: '取消' },
+    onConfirm: deleteSelected,
+    onCancel: () => MessagePlugin.info('已取消删除')
+  });
+};
+
 // 删除单个商品
-const deleteGoods = (idx) => {
-  cartList.value.splice(idx, 1);
-  // 重新检查全选状态
-  checkSingle();
+const deleteGoods = async (cartId) => {
+  try {
+    const res = await cartApi.deleteCartItem(cartId);
+    if (res.code === 200) {
+      // 更新本地数据
+      cartList.value = cartList.value.filter(item => item.cartId !== cartId);
+      // 重新检查全选状态
+      checkSingle();
+      MessagePlugin.success('删除成功');
+    } else {
+      MessagePlugin.error(`删除失败：${res.msg || '系统异常'}`);
+    }
+  } catch (error) {
+    console.error('删除购物车商品异常：', error);
+    MessagePlugin.error('删除失败，请稍后重试');
+  }
 };
 
 // 删除选中商品
-const deleteSelected = () => {
-  cartList.value = cartList.value.filter(item => !item.checked);
-  // 重置全选状态
-  isAllChecked.value = cartList.value.length > 0;
+const deleteSelected = async () => {
+  const selectedItems = cartList.value.filter(item => item.checked);
+  if (selectedItems.length === 0) return;
+  
+  try {
+    // 批量删除（如果后端支持批量接口，可优化为批量请求）
+    const deletePromises = selectedItems.map(item => cartApi.deleteCartItem(item.cartId));
+    const results = await Promise.all(deletePromises);
+    
+    // 检查是否全部删除成功
+    const allSuccess = results.every(res => res.code === 200);
+    if (allSuccess) {
+      // 更新本地数据
+      cartList.value = cartList.value.filter(item => !item.checked);
+      // 重置全选状态
+      isAllChecked.value = cartList.value.length > 0;
+      MessagePlugin.success('删除选中商品成功');
+    } else {
+      MessagePlugin.warning('部分商品删除失败，请稍后重试');
+      // 重新加载购物车列表
+      loadCartList();
+    }
+  } catch (error) {
+    console.error('批量删除购物车商品异常：', error);
+    MessagePlugin.error('删除失败，请稍后重试');
+    loadCartList();
+  }
+};
+
+// 结算处理
+const handleSettle = () => {
+  const selectedGoods = cartList.value.filter(item => item.checked);
+  if (selectedGoods.length === 0) {
+    MessagePlugin.warning('请选择要结算的商品');
+    return;
+  }
+  
+  // 跳转结算页并携带选中商品
+  router.push({
+    path: '/settle',
+    query: { goods: JSON.stringify(selectedGoods) }
+  });
 };
 
 // 跳转首页
@@ -234,21 +341,15 @@ const goToHome = () => {
   router.push('/');
 };
 
-// 结算（实际项目中跳转结算页）
-const settle = () => {
-  // 示例：跳转结算页并携带选中商品
-  const selectedGoods = cartList.value.filter(item => item.checked);
-  router.push({
-    path: '/settle',
-    query: { goods: JSON.stringify(selectedGoods) }
-  });
-};
+// 页面挂载时加载购物车数据
+onMounted(() => {
+  loadCartList();
+});
 </script>
 
 <style scoped>
 .cart-page {
   min-height: 100vh;
-  /* background: #F8F9FA; */
 }
 
 .main-container {
@@ -280,7 +381,7 @@ const settle = () => {
   margin-bottom: 40px;
 }
 
-/* 自定义复选框样式（核心优化点1） */
+/* 自定义复选框样式 */
 .custom-checkbox {
   display: flex;
   align-items: center;
@@ -288,7 +389,7 @@ const settle = () => {
   user-select: none;
 }
 .checkbox-input {
-  display: none; /* 隐藏原生复选框 */
+  display: none;
 }
 .checkbox-icon {
   width: 16px;
@@ -300,12 +401,10 @@ const settle = () => {
   margin-right: 4px;
   transition: all 0.2s;
 }
-/* 选中状态 - 主题色（#3799AE） */
 .checkbox-input:checked + .checkbox-icon {
   background-color: #3799AE;
   border-color: #3799AE;
 }
-/* 选中对勾 */
 .checkbox-input:checked + .checkbox-icon::after {
   content: '';
   position: absolute;
@@ -324,14 +423,11 @@ const settle = () => {
 
 /* 有商品购物车样式 */
 .cart-has-goods {
-  /* border: 1px solid #ECEEF2; */
-  /* border-radius: 8px; */
-  /* overflow: hidden; */
+  margin-bottom: 20px;
 }
 .cart-has-goods-content {
-	/* border: 1px solid #ECEEF2; */
-	border-radius: 8px;
-	overflow: hidden;
+  border-radius: 8px;
+  overflow: hidden;
 }
 /* 购物车表头 */
 .cart-header {
@@ -344,9 +440,9 @@ const settle = () => {
 }
 
 .cart-goods-list {
-	 background: #ffffff;
-	 border-bottom-right-radius: 8px;
-	 border-bottom-left-radius: 8px;
+  background: #ffffff;
+  border-bottom-right-radius: 8px;
+  border-bottom-left-radius: 8px;
 }
 .cart-col {
   display: flex;
@@ -439,7 +535,6 @@ const settle = () => {
   font-size: 14px;
   color: #F72B1C;
 }
-/* 单个删除按钮 - hover主题色（核心优化点2） */
 .delete-btn {
   border: none;
   background: transparent;
@@ -449,7 +544,7 @@ const settle = () => {
   transition: color 0.2s;
 }
 .delete-btn:hover {
-  color: #3799AE; /* 替换原红色为主题色 */
+  color: #3799AE;
 }
 
 /* 购物车底部操作栏 */
@@ -467,7 +562,6 @@ const settle = () => {
   align-items: center;
   gap: 16px;
 }
-/* 删除选中商品按钮 - hover主题色（核心优化点2） */
 .delete-selected-btn {
   border: none;
   background: transparent;
@@ -477,7 +571,7 @@ const settle = () => {
   transition: color 0.2s;
 }
 .delete-selected-btn:hover:not(:disabled) {
-  color: #3799AE; /* 替换原默认色为主题色 */
+  color: #3799AE;
 }
 .delete-selected-btn:disabled {
   opacity: 0.5;

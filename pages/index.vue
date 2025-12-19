@@ -1,23 +1,16 @@
 <template>
   <div>
-    <!-- 公共头部（顶部导航+Logo搜索） -->
     <Header />
-
-    <!-- 主体内容（宽度1200px，居中） -->
-    <main class="main-container">
-      <!-- 左侧分类树 + 右侧Banner+商品区 -->
+	<main class="main-container">
       <div class="content-wrapper">
-        <!-- 左侧分类树（高400px，与Banner同高） -->
         <CategoryTree />
-
-        <!-- 右侧区域（Banner+商品） -->
         <div class="right-area">
-          <!-- Banner（高400px，与分类树同高） -->
           <div class="banner">
+			  
             <t-swiper :navigation="{ size: 'large' }">
-              <t-swiper-item v-for="item in 1" :key="item">
+              <t-swiper-item v-for="item in bannerList" :key="item.id">
                 <div style="height:400px;">
-                  <img :src="bannerImage" alt="618狂欢购" class="banner-img" style="height:100%;width:100%;object-fit: cover;"/>
+                  <img :src="item.image || '/images/banner1.png'" alt="banner图" class="banner-img" style="height:100%;width:100%;object-fit: cover;"/>
                 </div>
               </t-swiper-item>
             </t-swiper>
@@ -26,92 +19,59 @@
       </div>
 	  
 	  <div class="product-wrapper">
-	  
-	  <!-- 商品展示卡片（单个卡片：标题+更多+四个商品） -->
 	  <section class="product-block">
-	  			<!-- 商品分类标签栏（单选+指定样式） -->
 	  			<div class="product-tags">
 	  			  <span 
 	  			    class="tag-item"
 	  			    :class="{ active: activeTag === tag.name }"
-	  			    v-for="tag in productTags" 
+	  			    v-for="tag in hotGoodsList" 
 	  			    :key="tag.name"
 	  			    @click="switchTag(tag.name)"
 	  			  >
 	  			    {{ tag.name }}
 	  			  </span>
 	  			</div>
-	    <div class="block-header">
+	    <!-- <div class="block-header">
 	      <h3 class="block-title">{{ activeTag }}</h3>
 	      <a class="more-btn" @click="goToGoodsList('filter-bag', 'mx9-series', '滤袋系列')">更多 ></a>
-	    </div>
-	    <!-- 商品列表（仅4个商品，无大图片） -->
+	    </div> -->
 	    <div class="product-grid">
 	      <div class="product-card" v-for="(item, idx) in currentProducts" :key="item.id" @click="goToGoodsDetail(item.id)">
-	        <!-- 热卖标签 -->
 	        <div class="tag-hot" v-if="item.isHot">热卖</div>
-	        <img :src="item.image" alt="商品图" class="product-img" />
-	        <p class="product-name">{{ item.name }}</p>
-	        <!-- 价格区域 -->
+	        <img :src="item.image || '/images/product.png'" alt="商品图" class="product-img" />
+	        <p class="product-name">{{ item.productName || '默认商品名称' }}</p>
 	        <div class="product-price">
-	          <span class="current-price">¥{{ item.price }}</span>
-	          <span class="original-price">¥{{ item.originalPrice }}</span>
+	          <span class="current-price">¥{{ item.salePrice || '-'}}</span>
+	          <span class="original-price">¥{{ item.strikePrice || '-'}}</span>
 	        </div>
 	      </div>
 	    </div>
 	  </section>
 	  
-	  
-	  <section class="product-block">
+	  <section class="product-block" v-for="(item, idx) in recommendList">
 	    <div class="block-header">
-	      <h3 class="block-title">二行行商品</h3>
+	      <h3 class="block-title">{{item.categoryName}}</h3>
 	      <a href="#" class="more-btn">更多 ></a>
 	    </div>
-	    <!-- 商品列表（仅4个商品） -->
-	  			<div class="block-img">
-	  				<img src="/public/images/big-product.png" alt="" />
+		
+	  			<div class="block-img" v-if="item.products?.length && !item.products[0].mainDisplay"  @click="goToGoodsDetail(item.products[0].id)" >
+	  				<img :src="item.products[0].image || '/images/big-product.png'" alt=""/>
 	  			</div>
-	  			
-	    <div class="product-grid">
-	      <div class="product-card" v-for="(item, idx) in currentProducts" :key="item.id">
-	        <!-- 热卖标签 -->
-	        <div class="tag-hot" v-if="item.isHot">热卖</div>
-	        <img :src="item.image" alt="商品图" class="product-img" />
-	        <p class="product-name">{{ item.name }}</p>
-	        <!-- 价格区域 -->
+	    <div class="product-grid" v-if="item.products?.length">
+	      <div class="product-card" v-for="(product, idx) in item.products.slice(1)" :key="item.id" @click="goToGoodsDetail(product.id)">
+	        <div class="tag-hot" v-if="product.isHot">热卖</div>
+	        <img :src="product.image || '/images/product.png'" alt="商品图" class="product-img" />
+	        <p class="product-name">{{ product.productName || '默认商品' }}</p>
 	        <div class="product-price">
-	          <span class="current-price">¥{{ item.price }}</span>
-	          <span class="original-price">¥{{ item.originalPrice }}</span>
-	        </div>
-	      </div>
-	    </div>
-	  </section>
-	  
-	  <section class="product-block">
-	    <div class="block-header">
-	      <h3 class="block-title">三行商品</h3>
-	      <a href="#" class="more-btn">更多 ></a>
-	    </div>
-	    <!-- 商品列表（仅4个商品，无大图片） -->
-	    <div class="product-grid">
-	      <div class="product-card" v-for="(item, idx) in currentProducts" :key="item.id">
-	        <!-- 热卖标签 -->
-	        <div class="tag-hot" v-if="item.isHot">热卖</div>
-	        <img :src="item.image" alt="商品图" class="product-img" />
-	        <p class="product-name">{{ item.name }}</p>
-	        <!-- 价格区域 -->
-	        <div class="product-price">
-	          <span class="current-price">¥{{ item.price }}</span>
-	          <span class="original-price">¥{{ item.originalPrice }}</span>
+	          <span class="current-price">¥{{ product.salePrice || '-'}}</span>
+	          <span class="original-price">¥{{ product.strikePrice || '-'}}</span>
 	        </div>
 	      </div>
 	    </div>
 	  </section>
 	  </div>
     </main>
-
-    <!-- 公共尾部 -->
-    <Footer />
+    <Footer :footerInfo="footerInfo" />
   </div>
 </template>
 
@@ -121,35 +81,20 @@ import Footer from '~/components/common/Footer.vue';
 import CategoryTree from '~/components/CategoryTree.vue';
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAsyncData } from '#imports';
+import { 
+  getHomeBannerList, 
+  getHomeCategoryList, 
+  getHomeHotGoodsList, 
+  getHomeRecommendList,
+  getHomeFooterInfo
+} from '@/apis/home';
+
 const router = useRouter();
 
-// Banner图片路径
-const bannerImage = ref('/images/banner1.png');
-
-// 定义跳转商品详情页方法
-const goToGoodsDetail = (goodsId) => {
-  // 方式1：通过路由name跳转（推荐，参数更清晰）
-  router.push({
-    path: '/goods-detail?id=' + goodsId, 
-    // params: { id: goodsId } // 传递商品ID到详情页
-  });
-
-  // 方式2：通过path跳转（需拼接参数）
-  // router.push(`/goods-detail/${goodsId}`);
-};
-// 跳转商品列表页并传参
-const goToGoodsList = (level2Id, level3Id, categoryName) => {
-  router.push({
-    path: '/goods-list', // 对应路由配置的name
-    query: { // 用query传参（刷新不丢失，适合分类筛选）
-      level2Id: level2Id, // 二级分类ID
-      level3Id: level3Id, // 三级分类ID
-      categoryName: categoryName // 分类名称（可选，用于页面标题）
-    }
-  });
-};
-// 1. 分类标签列表（单选）+ 对应商品数据
-const productTags = ref([
+// 基础模拟数据（兜底用）
+const defaultBannerList = [{ id: 1, image: '/images/banner1.png' }];
+const defaultCategoryList = [
   {
     name: "无纺布针刺毯",
     products: [
@@ -195,25 +140,96 @@ const productTags = ref([
       { id: 20, image: '/images/product.png', name: "芳纶化纤-耐高温型", price: 129, originalPrice: 299, isHot: true }
     ]
   }
-]);
-
-// 2. 选中的标签（默认第一个）
-const activeTag = ref(productTags.value[0].name);
-
-// 3. 切换标签方法（单选）
-const switchTag = (tagName) => {
-  activeTag.value = tagName;
+];
+const defaultHotGoodsList = defaultCategoryList[0].products;
+const defaultRecommendList = defaultCategoryList[1].products;
+const defaultFooterInfo = {
+  guideList: Array.from({ length: 18 }, (_, i) => ({ id: i + 1, name: "分类一型" })),
+  serviceList: [
+    { id: 1, name: "帮助中心" },
+    { id: 2, name: "售后政策" },
+    { id: 3, name: "私人定制" },
+    { id: 4, name: "严牌官网" }
+  ],
+  contactPhone: "400-826-6678",
+  contactEmail: "service@yanpai.com",
+  copyright: "Copyright Yanpai Filtration Technology Co., Ltd.",
+  recordInfo: "备案号:浙ICP备11060044号-8"
 };
 
-// 4. 计算属性：当前选中标签对应的商品列表
+// 服务端异步获取数据（SSR兼容）
+const { data: bannerRes } = useAsyncData('homeBanner', () => getHomeBannerList(), {
+  // default: () => defaultBannerList,
+  transform: (res) => res.data && res.data.length ? res.data : defaultBannerList,
+  server: false
+});
+const { data: categoryRes } = useAsyncData('homeCategory', () => getHomeCategoryList(), {
+  default: () => defaultCategoryList,
+  transform: (res) => res.data && res.data.length ? res.data : defaultCategoryList,
+});
+const { data: hotGoodsRes } = useAsyncData('homeHotGoods', () => getHomeHotGoodsList(), {
+  default: () => defaultHotGoodsList,
+  transform: (res) => res.data && res.data.length ? res.data : defaultHotGoodsList,
+  server: false
+});
+const { data: recommendRes } = useAsyncData('homeRecommend', () => getHomeRecommendList(), {
+  default: () => defaultRecommendList,
+  transform: (res) => res.data && res.data.length ? res.data : defaultRecommendList,
+  server: false
+});
+const { data: footerRes } = useAsyncData('homeFooter', () => getHomeFooterInfo(), {
+  default: () => defaultFooterInfo,
+  transform: (res) => res.data ? res.data : defaultFooterInfo,
+  server: false
+});
+
+// 响应式数据
+// const bannerList = ref(bannerRes.value);
+// const categoryList = ref(categoryRes.value);
+// const hotGoodsList = ref(hotGoodsRes.value);
+// const recommendList = ref(recommendRes.value);
+// const footerInfo = ref(footerRes.value);
+// const activeTag = ref(categoryList.value[0].name);
+
+const bannerList = computed(() => bannerRes.value || defaultBannerList);
+const categoryList = computed(() => categoryRes.value);
+const hotGoodsList = computed(() => hotGoodsRes.value);
+const recommendList = computed(() => recommendRes.value);
+const footerInfo = computed(() => footerRes.value);
+const activeTag = ref(categoryList.value[0].name || '名称');
+
+// 方法
+const goToGoodsDetail = (goodsId) => {
+ console.log('goToGoodsDetail:', goodsId)
+  router.push({
+    path: `/goods-detail/${goodsId}`,
+  });
+};
+
+const goToGoodsList = (level2Id, level3Id, categoryName) => {
+  router.push({
+    path: '/goods-list',
+    query: {
+      level2Id: level2Id,
+      level3Id: level3Id,
+      categoryName: categoryName
+    }
+  });
+};
+
+const switchTag = (tagName) => {
+  activeTag.value = tagName;
+  console.log('switchTag activeTag.value:', activeTag.value, tagName)
+};
+
+// 计算属性
 const currentProducts = computed(() => {
-  const targetTag = productTags.value.find(tag => tag.name === activeTag.value);
+  const targetTag = hotGoodsList.value.find(tag => tag.name === activeTag.value);
   return targetTag ? targetTag.products : [];
 });
 </script>
 
 <style lang="scss" scoped>
-// 1. 主体容器宽度1200px居中
 .main-container {
   width: 1200px;
   margin: 0 auto;
@@ -229,7 +245,6 @@ const currentProducts = computed(() => {
   flex: 1;
 }
 
-/* Banner样式（保持高度400px） */
 .banner {
   width: 100%;
   height: 400px;
@@ -239,18 +254,15 @@ const currentProducts = computed(() => {
   margin-bottom: 20px;
 }
 
-/* 2. 分类标签样式（严格匹配要求） */
 .product-tags {
   margin-bottom: 20px;
   display: flex;
-  gap: 10px; // 标签间距
+  gap: 10px;
 
   .tag-item {
-    // 未选中样式
-    // width: 102px;
 	padding: 0 16px;
     height: 42px;
-    line-height: 42px; // 文字垂直居中
+    line-height: 42px;
     text-align: center;
     border-radius: 4px;
     background: #FFFFFF;
@@ -261,12 +273,10 @@ const currentProducts = computed(() => {
     cursor: pointer;
     transition: all 0.2s;
 
-    // 选中样式
     &.active {
-      // width: 116px;
       height: 42px;
       background: #E1F5F9;
-      border-color: #E1F5F9; // 选中时边框同背景色
+      border-color: #E1F5F9;
       color: #3799AE;
       font-weight: 500;
     }
@@ -283,12 +293,10 @@ const currentProducts = computed(() => {
 	border-radius: 8px;
 }
 
-/* 商品展示卡片（单个卡片） */
 .product-block {
   background: #ffffff;
   padding: 0px 20px 20px;
   border-radius: 8px;
-  // margin-bottom: 30px;
 }
 .block-img {
 	height: 300px;
@@ -299,7 +307,6 @@ const currentProducts = computed(() => {
 		border-radius: 8px;
 	}
 }
-/* 卡片头部：分类名称+更多按钮（两端对齐） */
 .block-header {
   display: flex;
   justify-content: space-between;
@@ -323,20 +330,17 @@ const currentProducts = computed(() => {
   }
 }
 
-/* 商品网格（4列，无大图片） */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
 }
 
-/* 商品卡片样式 */
 .product-card {
   position: relative;
   text-align: center;
   cursor: pointer;
 
-  // 热卖标签
   .tag-hot {
     position: absolute;
     top: 10px;
@@ -349,7 +353,6 @@ const currentProducts = computed(() => {
     z-index: 10;
   }
 
-  // 商品图片
   .product-img {
     width: 100%;
     height: 180px;
@@ -358,7 +361,6 @@ const currentProducts = computed(() => {
     margin-bottom: 12px;
   }
 
-  // 商品名称（两行省略）
   .product-name {
     font-size: 14px;
     color: #333;
@@ -372,7 +374,6 @@ const currentProducts = computed(() => {
     margin-bottom: 8px;
   }
 
-  // 价格区域
   .product-price {
     font-size: 16px;
 
@@ -390,7 +391,6 @@ const currentProducts = computed(() => {
   }
 }
 
-/* 3. Footer宽度匹配1200px */
 :deep(.footer-container) {
   width: 1200px !important;
   margin: 0 auto;

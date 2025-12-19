@@ -1,17 +1,10 @@
 <template>
   <div class="goods-detail-page">
-    <!-- 公共头部 -->
     <Header />
-
-    <!-- 商品详情主体区域 -->
     <div class="main-container">
-      <!-- 上半部分：商品图片+信息 -->
       <div class="goods-header">
-        <!-- 商品图片区域（自定义轮播） -->
         <div class="goods-img-area">
-          <!-- 大图展示 -->
           <img :src="currentGoodsImg" alt="商品大图" class="goods-big-img">
-          <!-- 缩略图轮播 -->
           <div class="thumb-carousel">
             <button class="carousel-btn left-btn" @click="prevThumb" :disabled="currentThumbIdx <= 0">
               <img src="/images/pre.png" alt="上一个" class="carousel-btn-img">
@@ -20,7 +13,7 @@
               <img 
                 v-for="(img, idx) in goodsImgs" 
                 :key="idx"
-                :src="img" 
+                :src="img.imageUrl" 
                 alt="缩略图" 
                 class="thumb-img"
                 :class="currentThumbIdx === idx ? 'active' : ''"
@@ -32,93 +25,72 @@
             </button>
           </div>
         </div>
-
-        <!-- 商品信息区域 -->
         <div class="goods-info-area">
-          <h1 class="goods-title">MX芳纶系列滤袋</h1>
+          <h1 class="goods-title">{{ goodsDetail?.productName || 'MX芳纶系列滤袋' }}</h1>
           <p class="goods-desc">
-            介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍
+            {{ goodsDetail?.introduction || '介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍介绍' }}
           </p>
           <div class="price-area">
-            <span class="current-price">¥{{ currentPrice }}</span>
-            <span class="original-price">原价 ¥{{ originalPrice }}</span>
+            <span class="current-price">¥{{ goodsDetail?.salePrice || currentPrice }}</span>
+            <span class="original-price">原价 ¥{{ goodsDetail?.strikePrice || originalPrice }}</span>
           </div>
-
-          <!-- 标签区域（循环数组） -->
           <div class="tags-area">
-            <span v-for="(tag, idx) in tags" :key="idx" class="tag-item">{{ tag }}</span>
+            <span v-for="(tag, idx) in goodsDetail?.labels || tags" :key="idx" class="tag-item">{{ tag?.labelInfo?.name }}</span>
           </div>
-
-          <!-- 规格选择 -->
-          <div class="spec-group">
-            <div class="spec-label">规格1：</div>
+          <div class="spec-group" v-for="(sku, ind) in goodsDetail?.skus" :key="ind">
+            <div class="spec-label">{{ `规格${ind + 1}`}}</div>
             <div class="spec-options">
+              <span
+                v-if="!sku?.specJson"
+                class="spec-option"
+                @click="selectedSpec1 = 0; selectedSkuId = sku.id"
+                :class="selectedSpec1 === 0 ? 'active' : ''"
+              >
+                <img :src="sku.image || '/images/product.png'" alt="规格图标" class="spec-option-img">
+                {{ sku?.singleSpec  || '-'}}
+              </span>
               <span 
-                v-for="(opt, idx) in spec1Options" 
+                v-for="(opt, idx) in  JSON.parse(sku?.specJson || '[]')" 
                 :key="idx"
                 class="spec-option"
-                @click="selectedSpec1 = idx"
+                @click="selectedSpec1 = idx; selectedSkuId = sku.id"
                 :class="selectedSpec1 === idx ? 'active' : ''"
               >
-                <img src="/images/product.png" alt="规格图标" class="spec-option-img">
-                {{ opt }}
+                <img :src="sku.image || '/images/product.png'" alt="规格图标" class="spec-option-img">
+                {{ opt?.specName  || '-'}}
               </span>
             </div>
           </div>
-
-          <div class="spec-group">
-            <div class="spec-label">规格2：</div>
-            <div class="spec-options">
-              <span 
-                v-for="(opt, idx) in spec2Options" 
-                :key="idx"
-                class="spec-option"
-                @click="selectedSpec2 = idx"
-                :class="selectedSpec2 === idx ? 'active' : ''"
-              >
-                {{ opt }}
-              </span>
-            </div>
-          </div>
-
-          <!-- 分割线 -->
           <div class="divider"></div>
-
-          
-		  <div class="option-wrap">
-			  <!-- 数量选择 -->
-			  <div class="count-area">
-			    <button class="count-btn" @click="count > 1 && (count--)">&minus;</button>
-			    <span class="count-num">{{ count }}</span>
-			    <button class="count-btn" @click="count++">&plus;</button>
-			  </div>
-			  
-			  <!-- 操作按钮 -->
-			  <div class="btn-area">
-			    <button class="cart-btn">加入购物车</button>
-			    <button class="buy-btn">立即购买</button>
-				
-			  </div>
-			  
-		  </div>
+          <div class="option-wrap">
+            <div class="count-area">
+              <button class="count-btn" @click="count > 1 && (count--)">&minus;</button>
+              <span class="count-num">{{ count }}</span>
+              <button class="count-btn" @click="count++">&plus;</button>
+            </div>
+            <div class="btn-area">
+              <button class="cart-btn" @click="handleAddCart">加入购物车</button>
+              <button class="buy-btn">立即购买</button>
+            </div>
+          </div>
           <p class="tip">缺规格，请 <span class="custom-link">私人订制</span></p>
         </div>
       </div>
-
-      <!-- 相关好物区域（自定义横向轮播） -->
       <div class="related-goods-area">
         <h2 class="related-title">相关好物</h2>
         <div class="related-carousel">
           <button class="carousel-btn left-btn" @click="scrollRelated('left')">
             <img src="/images/pre.png" alt="上一个" class="carousel-btn-img">
           </button>
-          <div class="related-list" ref="relatedListRef">
-            <div class="related-item" v-for="(item, idx) in relatedGoods" :key="idx">
-              <img :src="item.img" alt="相关商品" class="related-img">
-              <p class="related-name">{{ item.name }}</p>
-              <div class="related-price">
-                <span class="related-current-price">¥{{ item.price }}</span>
-                <span class="related-original-price">¥{{ item.originalPrice }}</span>
+          <div class="related-list-wrap">
+            <div class="related-list" ref="relatedListRef">
+              <div class="related-item" v-for="(item, idx) in relatedGoods" :key="idx">
+                <img :src="item?.firstImage || '/images/product.png'" alt="相关商品" class="related-img">
+                <p class="related-name">{{ item?.productName }}</p>
+                <div class="related-price">
+                  <span class="related-current-price">¥{{ item?.salePrice }}</span>
+                  <span class="related-original-price">¥{{ item?.strikePrice }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -127,10 +99,7 @@
           </button>
         </div>
       </div>
-
-      <!-- 下半部分：详情/参数Tab -->
       <div class="goods-detail-area">
-        <!-- 标签切换 -->
         <div class="detail-tabs">
           <span 
             class="tab-item" 
@@ -147,15 +116,10 @@
             参数
           </span>
         </div>
-
-        <!-- 内容区域 -->
         <div class="detail-content">
-          <!-- 详情内容 -->
           <template v-if="activeTab === 'detail'">
-            <img src="/images/product.png" alt="详情图" class="detail-banner">
+            <div>{{goodsDetail?.details || '-'}}</div>
           </template>
-
-          <!-- 参数表格 -->
           <template v-else>
             <table class="param-table">
               <tr v-for="(item, idx) in paramsData" :key="idx">
@@ -167,29 +131,75 @@
         </div>
       </div>
     </div>
-
-    <!-- 公共尾部 -->
     <Footer />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute, useAsyncData } from '#app';
+// 导入 TDesign 的 MessagePlugin
+import { MessagePlugin } from 'tdesign-vue-next';
 import Header from '@/components/common/Header.vue';
 import Footer from '@/components/common/Footer.vue';
+import { getGoodApi } from '@/apis/good';
+import { getCartApi } from '@/apis/cart';
 
-// 商品图片数据
-const goodsImgs = ref([
-  '/images/product.png',
-  '/images/product.png',
-  '/images/product.png',
-  '/images/product.png',
-  '/images/product.png',
-]);
+// 初始化路由
+const route = useRoute();
+// 响应式获取商品ID
+const goodsId = computed(() => route.params.id || '');
+// 初始化商品API
+const goodApi = getGoodApi();
+// 初始化购物车API
+const { addCart } = getCartApi();
+
+// 获取商品详情数据
+const { data: goodsDetail, refresh: refreshGoodsDetail } = useAsyncData(
+  () => `goodsDetail_${goodsId.value}`,
+  async() => {
+    console.log('请求商品详情ID：', goodsId.value);
+    let res = await goodApi.getProductDetail('1996153055358066689' || goodsId.value);
+    console.log('------goodsDetail: res:', res)
+    return res.data;
+  },
+  { 
+    server: true,
+    default: () => ({}),
+    watch: [goodsId]
+  }
+);
+
+// 获取相关好物数据
+const { data: relatedGoods } = useAsyncData(
+  () => `relatedGoods_${goodsId.value}`,
+  async() => {
+    console.log('请求相关好物ID：', goodsId.value);
+    let res = await goodApi.getRelatedProducts('1996153055358066689' || goodsId.value);
+    console.log('-------relatedGoods: res:', res)
+    return res.data;
+  },
+  {
+    server: false
+  }
+);
+
+// 监听商品ID变化刷新数据
+watch(goodsId, (newId) => {
+  console.log('监听到ID变化：', newId);
+  if (newId) {
+    refreshGoodsDetail();
+  }
+}, { immediate: true });
+
+// 商品图片轮播相关
+const goodsImgs = computed(() => {
+  return goodsDetail.value?.images || []
+});
 const currentThumbIdx = ref(0);
-const currentGoodsImg = computed(() => goodsImgs.value[currentThumbIdx.value]);
-
-// 缩略图轮播控制
+const currentGoodsImg = computed(() => {
+  return goodsImgs.value[currentThumbIdx.value]?.imageUrl || goodsImgs?.value[0]?.imageUrl;
+});
 const prevThumb = () => {
   currentThumbIdx.value = Math.max(currentThumbIdx.value - 1, 0);
 };
@@ -197,67 +207,28 @@ const nextThumb = () => {
   currentThumbIdx.value = Math.min(currentThumbIdx.value + 1, goodsImgs.value.length - 1);
 };
 
-// 商品价格&标签数据
+// 基础数据定义
 const currentPrice = ref('3499');
 const originalPrice = ref('3999');
 const tags = ref(['7天无理由退换', '标签2', '标签3', '标签4', '标签5', '标签6']);
-
-// 规格选择数据
 const spec1Options = ref(['滤袋', '滤袋', '滤袋']);
 const selectedSpec1 = ref(0);
 const spec2Options = ref(['子规格子规格子规格', '子规格子规格子规格']);
 const selectedSpec2 = ref(0);
-
-// 数量选择
+const selectedSkuId = ref('');
 const count = ref(1);
 
-// 相关好物数据
-const relatedGoods = ref([
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '3899',
-    originalPrice: '2999'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '3399',
-    originalPrice: '4999'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '1954',
-    originalPrice: '3199'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '1444',
-    originalPrice: '4999'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '2464',
-    originalPrice: '4999'
-  }
-]);
+// 相关好物滚动
 const relatedListRef = ref(null);
 const scrollRelated = (direction) => {
   if (!relatedListRef.value) return;
   const scrollStep = 300;
-  if (direction === 'left') {
-    relatedListRef.value.scrollLeft -= scrollStep;
-  } else {
-    relatedListRef.value.scrollLeft += scrollStep;
-  }
+  relatedListRef.value.scrollLeft += direction === 'left' ? -scrollStep : scrollStep;
 };
 
-// Tab切换&参数数据
+// 详情/参数标签切换
 const activeTab = ref('detail');
-const paramsData = ref([
+const defaultParamsData = [
   { key: '产品名称', value: 'MX芳纶系列滤袋' },
   { key: '核心材质', value: '芳纶纤维复合材料' },
   { key: '适用温度', value: '≤200℃（瞬间220℃）' },
@@ -266,35 +237,47 @@ const paramsData = ref([
   { key: '适用介质', value: '强酸、强碱、高温液体/气体' },
   { key: '常规尺寸', value: 'φ180×800mm（可定制）' },
   { key: '使用寿命', value: '3-6个月（依工况而定）' }
-]);
-import { useRoute } from 'vue-router'; // 引入路由钩子
-const route = useRoute();
-// 接收商品ID参数（两种方式）
-const goodsId = ref('');
-// 请求商品详情数据（模拟接口）
-const getGoodsDetailData = async () => {
-  // 实际项目中替换为真实接口请求
-  // const res = await api.getGoodsDetail(goodsId.value);
-  // goodsDetail.value = res.data;
+];
+const paramsData = computed(()=> {
+  return goodsDetail.value?.productParams || defaultParamsData
+});
 
-  // 模拟数据
-  goodsDetail.value = {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋',
-    price: '3499',
-    originalPrice: '3999',
-    desc: '介绍介绍介绍介绍介绍介绍介绍介绍',
-    tags: ['7天无理由退换', '正品保障', '现货速发'],
-    spec1Options: ['滤袋', '滤袋', '滤袋'],
-    spec2Options: ['子规格子规格子规格', '子规格子规格子规格']
-  };
+// 加入购物车处理函数（替换 alert 为 MessagePlugin）
+const handleAddCart = async () => {
+  if (!goodsId.value) {
+    // 错误提示
+    MessagePlugin.error('商品ID不能为空');
+    return;
+  }
+  if (!selectedSkuId.value) {
+    // 错误提示
+    MessagePlugin.error('请选择商品规格');
+    return;
+  }
+  try {
+    const res = await addCart({
+      productId: goodsId.value,
+      productSkuId: selectedSkuId.value,
+      cartNum: count.value
+    });
+    if (res.code === 200) {
+      // 成功提示
+      MessagePlugin.success('加入购物车成功');
+    } else {
+      // 错误提示
+      MessagePlugin.error(`加入购物车失败：${res.msg || '系统异常'}`);
+    }
+  } catch (error) {
+    console.error('加入购物车出错：', error);
+    // 异常提示
+    MessagePlugin.error('加入购物车失败，请稍后重试');
+  }
 };
+
+// 挂载时初始化
 onMounted(() => {
-  goodsId.value = route.params.id || '';
-  
-  // 调用接口请求商品详情数据
-    getGoodsDetailData();
-  if (relatedListRef.value) {
+  console.log('挂载时ID：', goodsId.value);
+  if (relatedListRef.value && relatedGoods.value) {
     relatedListRef.value.style.width = `${relatedGoods.value.length * 220}px`;
   }
 });
@@ -305,9 +288,8 @@ onMounted(() => {
   min-height: 100vh;
   background: #F8F9FA;
   .option-wrap {
-	  display: flex;
-	  justify-content: flex-start;
-	  
+    display: flex;
+    justify-content: flex-start;
   }
 }
 
@@ -319,14 +301,12 @@ onMounted(() => {
   border-radius: 14px;
 }
 
-/* 商品头部区域 */
 .goods-header {
   display: flex;
   gap: 40px;
   margin-bottom: 40px;
 }
 
-/* 商品图片区域 */
 .goods-img-area {
   width: 400px;
 }
@@ -379,7 +359,6 @@ onMounted(() => {
   border-color: #3799AE;
 }
 
-/* 商品信息区域 */
 .goods-info-area {
   flex: 1;
 }
@@ -410,7 +389,6 @@ onMounted(() => {
   text-decoration: line-through;
 }
 
-/* 标签区域样式 */
 .tags-area {
   margin-bottom: 20px;
   display: flex;
@@ -428,7 +406,6 @@ onMounted(() => {
   align-items: center;
 }
 
-/* 规格选择样式 */
 .spec-group {
   margin-bottom: 20px;
 }
@@ -441,6 +418,7 @@ onMounted(() => {
 .spec-options {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .spec-option {
   height: 42px;
@@ -465,14 +443,12 @@ onMounted(() => {
   color: #3799AE;
 }
 
-/* 分割线 */
 .divider {
   height: 1px;
   background: #ECEFF3;
   margin: 20px 0;
 }
 
-/* 数量选择 */
 .count-area {
   display: flex;
   align-items: center;
@@ -494,15 +470,12 @@ onMounted(() => {
 .count-num {
   width: 40px;
   height: 32px;
-  /* border-top: 1px solid #ECEEF2; */
-  /* border-bottom: 1px solid #ECEEF2; */
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 14px;
 }
 
-/* 操作按钮 */
 .btn-area {
   display: flex;
   gap: 20px;
@@ -539,7 +512,6 @@ onMounted(() => {
   cursor: pointer;
 }
 
-/* 相关好物区域 */
 .related-goods-area {
   margin-bottom: 40px;
 }
@@ -553,7 +525,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   position: relative;
+  width: 100%;
+}
+.related-list-wrap {
+  flex: 1;
   overflow: hidden;
+  margin: 0 10px;
 }
 .related-list {
   display: flex;
@@ -562,6 +539,7 @@ onMounted(() => {
 }
 .related-item {
   width: 200px;
+  flex-shrink: 0;
 }
 .related-img {
   width: 100%;
@@ -590,7 +568,6 @@ onMounted(() => {
   text-decoration: line-through;
 }
 
-/* 详情/参数Tab区域 */
 .goods-detail-area {
   margin-bottom: 40px;
 }
@@ -615,12 +592,7 @@ onMounted(() => {
 .detail-content {
   padding: 10px 0;
 }
-.detail-banner {
-  width: 100%;
-  border-radius: 8px;
-}
 
-/* 参数表格样式 */
 .param-table {
   width: 100%;
   border-collapse: collapse;
