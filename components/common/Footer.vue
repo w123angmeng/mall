@@ -1,53 +1,102 @@
 <template>
   <footer class="footer">
-    <div class="footer-container">
-      <div class="footer-column guide-column">
-        <h3 class="column-title">选购指南</h3>
-        <ul class="column-list guide-list">
-          <li v-for="item in footerInfo?.guides" :key="item.id">
-            <a href="#" class="list-item">{{ item.categoryName }}</a>
-          </li>
-        </ul>
+    <!-- 加载状态 -->
+    <div v-if="isLoading" class="footer-loading">加载中...</div>
+    
+    <!-- 错误状态 -->
+    <div v-else-if="error" class="footer-error">{{ error }}</div>
+    
+    <!-- 正常数据展示 -->
+    <div v-else>
+      <div class="footer-container">
+        <div class="footer-column guide-column">
+          <h3 class="column-title">选购指南</h3>
+          <ul class="column-list guide-list">
+            <li v-for="item in footerData?.guides" :key="item.id">
+              <a href="#" class="list-item">{{ item.categoryName }}</a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="footer-column service-column">
+          <h3 class="column-title">服务中心</h3>
+          <ul class="column-list service-list">
+            <li v-for="item in footerData?.services" :key="item.id">
+              <a href="#" class="list-item">{{ item.title }}</a>
+            </li>
+          </ul>
+        </div>
+
+        <div class="footer-column qr-column">
+          <img :src="footerData?.contact?.qrCode || '/images/qr-code.png'" alt="严牌商城公众号" class="qr-code" />
+        </div>
+
+        <div class="footer-column contact-column">
+          <p class="contact-phone">{{ footerData?.contact?.phone }}</p>
+          <p class="contact-email">{{ footerData?.contact?.email }}</p>
+          <button class="online-service">
+            <i class="service-icon">💬</i> 在线客服
+          </button>
+        </div>
       </div>
 
-      <div class="footer-column service-column">
-        <h3 class="column-title">服务中心</h3>
-        <ul class="column-list service-list">
-          <li v-for="item in footerInfo?.services" :key="item.id">
-            <a href="#" class="list-item">{{ item.title }}</a>
-          </li>
-        </ul>
+      <div class="bottom-info">
+        <div class="footer-logo">
+          <img src="/images/logo.png" alt="严牌官网" class="logo-img" />
+          <span class="logo-text">严牌官网</span>
+        </div>
+        <p class="copyright-text">{{ footerData?.copyright }}</p>
+        <p class="record-info">{{ footerData?.recordInfo }}</p>
       </div>
-
-      <div class="footer-column qr-column">
-        <img :src="footerInfo?.contact?.qrCode || '/images/qr-code.png'" alt="严牌商城公众号" class="qr-code" />
-      </div>
-
-      <div class="footer-column contact-column">
-        <p class="contact-phone">{{ footerInfo?.contact?.phone }}</p>
-        <p class="contact-email">{{ footerInfo?.contact?.email }}</p>
-        <button class="online-service">
-          <i class="service-icon">💬</i> 在线客服
-        </button>
-      </div>
-    </div>
-
-    <div class="bottom-info">
-      <div class="footer-logo">
-        <img src="/images/logo.png" alt="严牌官网" class="logo-img" />
-        <span class="logo-text">严牌官网</span>
-      </div>
-      <p class="copyright-text">{{ footerInfo?.copyright }}</p>
-      <p class="record-info">{{ footerInfo?.recordInfo }}</p>
     </div>
   </footer>
 </template>
 
 <script setup>
-const props = defineProps({
-  footerInfo: {
-    type: Object,
-    required: true
+import { ref, onMounted } from 'vue';
+import { getHomeFooterInfo } from '@/apis/home';
+import { MessagePlugin } from 'tdesign-vue-next';
+
+// 兜底默认数据（与首页的 defaultFooterInfo 保持一致）
+const defaultFooterInfo = {
+  guides: Array.from({ length: 18 }, (_, i) => ({ id: i + 1, categoryName: "分类一型" })),
+  services: [
+    { id: 1, title: "帮助中心" },
+    { id: 2, title: "售后政策" },
+    { id: 3, title: "私人定制" },
+    { id: 4, title: "严牌官网" }
+  ],
+  contact: {
+    phone: "400-826-6678",
+    email: "service@yanpai.com",
+    qrCode: "/images/qr-code.png"
+  },
+  copyright: "Copyright Yanpai Filtration Technology Co., Ltd.",
+  recordInfo: "备案号:浙ICP备11060044号-8"
+};
+
+// 响应式数据
+const isLoading = ref(false); // 请求加载状态
+const error = ref(null); // 请求错误信息
+const footerData = ref(defaultFooterInfo); // 页脚数据（默认兜底）
+
+// 组件挂载时请求页脚数据
+onMounted(async () => {
+  isLoading.value = true;
+  try {
+    // 调用首页的页脚数据接口
+    const res = await getHomeFooterInfo();
+    if (res.data) {
+      // 接口返回有效数据则替换兜底数据
+      footerData.value = { ...defaultFooterInfo, ...res.data };
+    }
+  } catch (err) {
+    // 捕获请求异常，提示用户并保留兜底数据
+    error.value = "获取页脚信息失败";
+    console.error("页脚数据请求失败：", err);
+    MessagePlugin.error("获取页脚信息失败，请稍后重试");
+  } finally {
+    isLoading.value = false;
   }
 });
 </script>
@@ -60,12 +109,20 @@ const props = defineProps({
   width: 1200px;
   margin: 0 auto;
 
+  // 加载/错误状态样式
+  .footer-loading, .footer-error {
+    text-align: center;
+    padding: 20px 0;
+    color: #666;
+    font-size: 14px;
+  }
+
   .footer-container {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     padding: 0 100px;
-	border-radius: 8px;
+    border-radius: 8px;
   }
 
   .footer-column {
@@ -88,7 +145,7 @@ const props = defineProps({
       display: flex;
       flex-direction: column;
       align-items: flex-end;
-	  text-align: center;
+      text-align: center;
     }
 
     .column-title {
@@ -96,7 +153,6 @@ const props = defineProps({
       font-weight: 600;
       color: #2F3032;
       margin-bottom: 20px;
-	  // margin: 0 auto 20px;
     }
   }
 

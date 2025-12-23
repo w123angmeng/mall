@@ -35,7 +35,7 @@
             <span class="original-price">原价 ¥{{ goodsDetail?.strikePrice || originalPrice }}</span>
           </div>
           <div class="tags-area">
-            <span v-for="(tag, idx) in goodsDetail?.labels || tags" :key="idx" class="tag-item">{{ tag?.labelInfo?.name }}</span>
+            <span v-for="(tag, idx) in goodsDetail?.labels || tags" :key="idx" class="tag-item">{{ tag?.labelInfo?.name || tag }}</span>
           </div>
           <div class="spec-group" v-for="(sku, ind) in goodsDetail?.skus" :key="ind">
             <div class="spec-label">{{ `规格${ind + 1}`}}</div>
@@ -43,8 +43,8 @@
               <span
                 v-if="!sku?.specJson"
                 class="spec-option"
-                @click="selectedSpec1 = 0; selectedSkuId = sku.id"
-                :class="selectedSpec1 === 0 ? 'active' : ''"
+                @click="handleSpecSelect(sku, 0)"
+                :class="selectedSkuId === sku.id ? 'active' : ''"
               >
                 <img :src="sku.image || '/images/product.png'" alt="规格图标" class="spec-option-img">
                 {{ sku?.singleSpec  || '-'}}
@@ -53,10 +53,10 @@
                 v-for="(opt, idx) in  JSON.parse(sku?.specJson || '[]')" 
                 :key="idx"
                 class="spec-option"
-                @click="selectedSpec1 = idx; selectedSkuId = sku.id"
-                :class="selectedSpec1 === idx ? 'active' : ''"
+                @click="handleSpecSelect(sku, idx)"
+                :class="selectedSkuId === sku.id ? 'active' : ''"
               >
-                <img :src="sku.image || '/images/product.png'" alt="规格图标" class="spec-option-img">
+                <img :src="'/images/product.png' || sku.image" alt="规格图标" class="spec-option-img">
                 {{ opt?.specName  || '-'}}
               </span>
             </div>
@@ -70,7 +70,7 @@
             </div>
             <div class="btn-area">
               <button class="cart-btn" @click="handleAddCart">加入购物车</button>
-              <button class="buy-btn">立即购买</button>
+              <button class="buy-btn" @click="handleBuyNow">立即购买</button>
             </div>
           </div>
           <p class="tip">缺规格，请 <span class="custom-link">私人订制</span></p>
@@ -84,7 +84,7 @@
           </button>
           <div class="related-list-wrap">
             <div class="related-list" ref="relatedListRef">
-              <div class="related-item" v-for="(item, idx) in relatedGoods" :key="idx">
+              <div class="related-item" v-for="(item, idx) in relatedGoods" :key="idx" @click="goToGoodsDetail(item.id)">
                 <img :src="item?.firstImage || '/images/product.png'" alt="相关商品" class="related-img">
                 <p class="related-name">{{ item?.productName }}</p>
                 <div class="related-price">
@@ -118,7 +118,7 @@
         </div>
         <div class="detail-content">
           <template v-if="activeTab === 'detail'">
-            <div>{{goodsDetail?.details || '-'}}</div>
+            <div v-html="goodsDetail?.details || '-'"></div>
           </template>
           <template v-else>
             <table class="param-table">
@@ -137,7 +137,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { useRoute, useAsyncData } from '#app';
+import { useRoute, useRouter, useAsyncData } from '#app';
 // 导入 TDesign 的 MessagePlugin
 import { MessagePlugin } from 'tdesign-vue-next';
 import Header from '@/components/common/Header.vue';
@@ -145,21 +145,23 @@ import Footer from '@/components/common/Footer.vue';
 import { getGoodApi } from '@/apis/good';
 import { getCartApi } from '@/apis/cart';
 
-// 初始化路由
+// 初始化路由和路由跳转
 const route = useRoute();
+const router = useRouter();
 // 响应式获取商品ID
 const goodsId = computed(() => route.params.id || '');
 // 初始化商品API
 const goodApi = getGoodApi();
 // 初始化购物车API
-const { addCart } = getCartApi();
+const cartApi = getCartApi();
 
 // 获取商品详情数据
 const { data: goodsDetail, refresh: refreshGoodsDetail } = useAsyncData(
   () => `goodsDetail_${goodsId.value}`,
   async() => {
     console.log('请求商品详情ID：', goodsId.value);
-    let res = await goodApi.getProductDetail('1996153055358066689' || goodsId.value);
+    // 优先使用路由中的商品ID，兜底使用测试ID
+    const res = await goodApi.getProductDetail(goodsId.value || '1996153055358066689');
     console.log('------goodsDetail: res:', res)
     return res.data;
   },
@@ -175,9 +177,9 @@ const { data: relatedGoods } = useAsyncData(
   () => `relatedGoods_${goodsId.value}`,
   async() => {
     console.log('请求相关好物ID：', goodsId.value);
-    let res = await goodApi.getRelatedProducts('1996153055358066689' || goodsId.value);
+    const res = await goodApi.getRelatedProducts(goodsId.value || '1996153055358066689');
     console.log('-------relatedGoods: res:', res)
-    return res.data;
+    return res.data || [];
   },
   {
     server: false
@@ -198,7 +200,7 @@ const goodsImgs = computed(() => {
 });
 const currentThumbIdx = ref(0);
 const currentGoodsImg = computed(() => {
-  return goodsImgs.value[currentThumbIdx.value]?.imageUrl || goodsImgs?.value[0]?.imageUrl;
+  return goodsImgs.value[currentThumbIdx.value]?.imageUrl || goodsImgs.value[0]?.imageUrl || '/images/product.png';
 });
 const prevThumb = () => {
   currentThumbIdx.value = Math.max(currentThumbIdx.value - 1, 0);
@@ -211,12 +213,20 @@ const nextThumb = () => {
 const currentPrice = ref('3499');
 const originalPrice = ref('3999');
 const tags = ref(['7天无理由退换', '标签2', '标签3', '标签4', '标签5', '标签6']);
-const spec1Options = ref(['滤袋', '滤袋', '滤袋']);
-const selectedSpec1 = ref(0);
-const spec2Options = ref(['子规格子规格子规格', '子规格子规格子规格']);
-const selectedSpec2 = ref(0);
 const selectedSkuId = ref('');
 const count = ref(1);
+
+// 规格选择处理
+const handleSpecSelect = (sku, idx) => {
+  selectedSkuId.value = sku.id;
+  // 可在此处更新选中规格的价格等信息
+  if (sku.salePrice) {
+    currentPrice.value = sku.salePrice;
+  }
+  if (sku.strikePrice) {
+    originalPrice.value = sku.strikePrice;
+  }
+};
 
 // 相关好物滚动
 const relatedListRef = ref(null);
@@ -242,35 +252,102 @@ const paramsData = computed(()=> {
   return goodsDetail.value?.productParams || defaultParamsData
 });
 
-// 加入购物车处理函数（替换 alert 为 MessagePlugin）
+// 加入购物车处理函数
 const handleAddCart = async () => {
   if (!goodsId.value) {
-    // 错误提示
     MessagePlugin.error('商品ID不能为空');
     return;
   }
   if (!selectedSkuId.value) {
-    // 错误提示
     MessagePlugin.error('请选择商品规格');
     return;
   }
   try {
-    const res = await addCart({
+    const res = await cartApi.addCart({
       productId: goodsId.value,
       productSkuId: selectedSkuId.value,
       cartNum: count.value
     });
     if (res.code === 200) {
-      // 成功提示
       MessagePlugin.success('加入购物车成功');
     } else {
-      // 错误提示
       MessagePlugin.error(`加入购物车失败：${res.msg || '系统异常'}`);
     }
   } catch (error) {
     console.error('加入购物车出错：', error);
-    // 异常提示
     MessagePlugin.error('加入购物车失败，请稍后重试');
+  }
+};
+
+// 立即购买处理函数（修复后）
+const handleBuyNow = () => {
+  // 验证商品信息
+  if (!goodsId.value) {
+    MessagePlugin.error('商品ID异常，无法购买');
+    return;
+  }
+  if (!selectedSkuId.value) {
+    MessagePlugin.error('请先选择商品规格');
+    return;
+  }
+  if (count.value < 1) {
+    MessagePlugin.error('购买数量不能小于1');
+    return;
+  }
+
+  // 从商品详情中找到选中的SKU数据
+  const selectedSku = goodsDetail.value?.skus?.find(sku => sku.id === selectedSkuId.value) || {};
+  
+  // 1. 确定商品规格类型（0单规格，1多规格）：从选中的SKU中判断
+  const specType = selectedSku.specJson ? 1 : 0; 
+  // 2. 单规格名称：从选中的SKU的singleSpec获取
+  const singleSpec = specType === 0 ? (selectedSku.singleSpec || '默认规格') : '';
+  // 3. 多规格JSON：直接使用选中SKU的specJson（已为JSON字符串）
+  const specJson = specType === 1 ? (selectedSku.specJson || '{}') : ''; 
+  // 4. 商品图片ID（如果后端要求图片ID而非URL，需替换为图片ID，此处暂时用URL）
+  const productImageId = currentGoodsImg.value ? getImageIdFromUrl(currentGoodsImg.value) : ''; 
+
+  // 构造订单参数（补充后端YpOrderDetailDTO要求的所有字段）
+  const orderParams = {
+    // 基础商品信息
+    productId: goodsId.value, // 商品ID
+    skuId: selectedSkuId.value, // 选中的SKU ID
+    buyNum: count.value, // 购买数量
+    productName: goodsDetail.value?.productName || 'MX芳纶系列滤袋', // 商品名称
+    salePrice: goodsDetail.value?.salePrice || currentPrice.value, // 商品单价
+    productImage: currentGoodsImg.value, // 商品图片URL
+    productImageId: productImageId, // 商品图片ID（可选）
+    
+    // 规格相关
+    specType: specType, // 规格类型 0单 1多
+    singleSpec: singleSpec, // 单规格名称
+    specJson: specJson, // 多规格JSON字符串
+    
+    // 金额计算
+    totalPrice: (Number(goodsDetail.value?.salePrice) || Number(currentPrice.value)) * count.value, // 商品总价
+  };
+
+  // 跳转到下单页面并携带参数（编码防止特殊字符问题）
+  router.push({
+    path: '/order-submit',
+    query: {
+      orderData: encodeURIComponent(JSON.stringify(orderParams))
+    }
+  });
+};
+
+// 可选：辅助函数 - 从图片URL中提取图片ID（如果后端要求图片ID而非URL）
+const getImageIdFromUrl = (url) => {
+  if (!url) return '';
+  // 示例：从URL末尾截取ID（需根据实际URL规则调整）
+  const parts = url.split('/');
+  return parts[parts.length - 1].split('.')[0];
+};
+
+// 相关商品点击跳转详情页
+const goToGoodsDetail = (id) => {
+  if (id) {
+    router.push(`/goods-detail/${id}`);
   }
 };
 
@@ -432,6 +509,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: all 0.2s ease;
 }
 .spec-option-img {
   width: 30px;
@@ -441,6 +519,10 @@ onMounted(() => {
 .spec-option.active {
   border-color: #3799AE;
   color: #3799AE;
+  background-color: rgba(55, 153, 174, 0.05);
+}
+.spec-option:hover:not(.active) {
+  border-color: #B3D9E1;
 }
 
 .divider {
@@ -466,6 +548,10 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: border-color 0.2s ease;
+}
+.count-btn:hover {
+  border-color: #3799AE;
 }
 .count-num {
   width: 40px;
@@ -491,6 +577,10 @@ onMounted(() => {
   border-radius: 4px;
   cursor: pointer;
   font-size: 16px;
+  transition: background-color 0.2s ease;
+}
+.cart-btn:hover {
+  background-color: #D1EEF2;
 }
 .buy-btn {
   width: 290px;
@@ -501,6 +591,14 @@ onMounted(() => {
   border-radius: 4px;
   cursor: pointer;
   font-size: 16px;
+  transition: background-color 0.2s ease;
+}
+.buy-btn:hover {
+  background-color: #3799AE;
+}
+.buy-btn:disabled {
+  background-color: #B3D9E1;
+  cursor: not-allowed;
 }
 .tip {
   font-size: 12px;
@@ -510,6 +608,7 @@ onMounted(() => {
 .custom-link {
   color: #3799AF;
   cursor: pointer;
+  text-decoration: underline;
 }
 
 .related-goods-area {
@@ -540,6 +639,11 @@ onMounted(() => {
 .related-item {
   width: 200px;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.related-item:hover {
+  transform: translateY(-4px);
 }
 .related-img {
   width: 100%;
@@ -584,13 +688,21 @@ onMounted(() => {
   cursor: pointer;
   padding-bottom: 8px;
   border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
 }
 .tab-item.active {
   color: #272727;
   border-bottom-color: #3799AE;
 }
+.tab-item:hover:not(.active) {
+  color: #3799AE;
+  border-bottom-color: #E1F5F9;
+}
 .detail-content {
   padding: 10px 0;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #272727;
 }
 
 .param-table {
@@ -607,6 +719,7 @@ onMounted(() => {
 .param-key {
   width: 150px;
   color: #838486;
+  font-weight: 500;
 }
 .param-value {
   color: #272727;

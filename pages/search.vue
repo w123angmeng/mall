@@ -32,22 +32,27 @@
       </div>
 
       <div class="search-result">
+        <!-- 加载中状态 -->
+        <div class="loading-result" v-if="isLoading">
+          <span>正在搜索商品...</span>
+        </div>
+
         <!-- 有搜索结果 -->
-        <div class="result-list" v-if="hasResult">
-          <div class="goods-item" v-for="(goods, idx) in searchGoods" :key="idx">
+        <div class="result-list" v-else-if="hasResult && searchGoods.length">
+          <div class="goods-item" v-for="(goods, idx) in searchGoods" :key="goods.id || idx" @click="goToGoodsDetail(goods.id)">
             <!-- 自适应正方形商品图片 -->
-            <img :src="goods.img" alt="商品图" class="goods-img">
+            <img :src="goods.image || '/images/product.png'" alt="商品图" class="goods-img">
             <!-- 商品名称（两行省略） -->
-            <div class="goods-name">{{ goods.name }}</div>
+            <div class="goods-name">{{ goods.productName || '默认商品名称' }}</div>
             <!-- 商品价格（拆分符号/数字设置样式） -->
             <div class="price-area">
               <span class="current-price">
                 <span class="price-sign">¥</span>
-                <span class="price-num">{{ goods.price }}</span>
+                <span class="price-num">{{ goods.salePrice || '0' }}</span>
               </span>
-              <span class="original-price">
+              <span class="original-price" v-if="goods.strikePrice">
                 <span class="original-sign">¥</span>
-                <span class="original-num">{{ goods.originalPrice }}</span>
+                <span class="original-num">{{ goods.strikePrice }}</span>
               </span>
             </div>
           </div>
@@ -60,11 +65,31 @@
         </div>
       </div>
 
+      <!-- 分页控件 -->
+      <div class="pagination" v-if="hasResult && totalPages > 1">
+        <button 
+          class="page-btn" 
+          @click="changePage(currentPage - 1)"
+          :disabled="currentPage === 1 || isLoading"
+        >
+          上一页
+        </button>
+        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+        <button 
+          class="page-btn" 
+          @click="changePage(currentPage + 1)"
+          :disabled="currentPage === totalPages || isLoading"
+        >
+          下一页
+        </button>
+      </div>
+
       <!-- 猜你喜欢组件 -->
       <GuessYouLike 
         fromPage="search" 
         :relateKey="searchKeyword" 
         :goodsList="guessGoods"
+        v-if="guessGoods.length"
       />
     </div>
 
@@ -74,36 +99,71 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, onMounted, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { getGoodApi } from '@/apis/good';
+import { MessagePlugin } from 'tdesign-vue-next';
 import Header from '@/components/common/Header.vue';
 import Footer from '@/components/common/Footer.vue';
 import GuessYouLike from '@/components/GuessYouLike.vue';
 
+// 路由与路由跳转
 const route = useRoute();
+const router = useRouter();
+// 初始化商品API
+const goodApi = getGoodApi();
+
+// 响应式数据
 const searchKeyword = ref('');
 const hasResult = ref(true);
+const isLoading = ref(false);
+const searchGoods = ref([]); // 搜索结果商品
+const guessGoods = ref([]); // 猜你喜欢商品
+
+// 分页相关
+const currentPage = ref(1);
+const pageSize = ref(12); // 每页12条
+const totalPages = ref(1);
+const totalCount = ref(0);
 
 // 排序状态：当前字段 + 排序方向（asc正序/desc倒序）
 const sortState = ref({
-  currentKey: 'comprehensive',
-  currentDir: 'asc'
+  currentKey: 'comprehensiveScore', // 对应接口的综合排序字段
+  currentDir: 'desc'
 });
 
-// 筛选排序选项
+// 筛选排序选项（映射接口字段）
 const sortOptions = ref([
-  { label: '综合', value: 'comprehensive' },
+  { label: '综合', value: 'comprehensiveScore' },
   { label: '销量', value: 'sales' },
   { label: '新品', value: 'new' },
   { label: '价格', value: 'price' }
 ]);
 
+// 排序字段映射（接口实际接收的字段名）
+const sortKeyMap = {
+  comprehensiveScore: 'comprehensiveScore',
+  sales: 'salesVolume', // 假设接口销量字段为salesVolume
+  new: 'createTime', // 假设接口新品字段为createTime
+  price: 'salePrice'
+};
+
+// 跳转到商品详情页
+const goToGoodsDetail = (goodsId) => {
+  if (goodsId) {
+    router.push({ path: `/goods-detail/${goodsId}` });
+  }
+};
+
 // 排序切换方法（支持销量/价格正倒序）
 const handleSort = (option) => {
   const { value } = option;
   // 综合/新品无排序方向，直接切换字段
-  if (value === 'comprehensive' || value === 'new') {
+  if (value === 'comprehensiveScore' || value === 'new') {
     sortState.value.currentKey = value;
+    sortState.value.currentDir = 'desc'; // 综合/新品默认倒序
+    currentPage.value = 1; // 切换排序重置页码
+    fetchSearchGoods(); // 重新请求数据
     return;
   }
   // 销量/价格切换字段/方向
@@ -115,54 +175,90 @@ const handleSort = (option) => {
     sortState.value.currentKey = value;
     sortState.value.currentDir = 'asc';
   }
+  currentPage.value = 1; // 切换排序重置页码
+  fetchSearchGoods(); // 重新请求数据
 };
 
-// 搜索结果商品（假数据）
-const searchGoods = ref([
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  }
-]);
-// const searchGoods = ref([
- 
-// ]);
+// 分页切换
+const changePage = (page) => {
+  if (page < 1 || page > totalPages.value || isLoading.value) return;
+  currentPage.value = page;
+  fetchSearchGoods();
+};
 
-// 猜你喜欢商品（假数据）
-const guessGoods = ref([
-  {
-    img: '/images/product.png',
-    name: 'MX9系列过滤袋 MX9系列过滤袋 MX9系列过滤袋',
-    price: '129',
-    originalPrice: '200'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX9系列过滤袋 MX9系列过滤袋 MX9系列过滤袋',
-    price: '129',
-    originalPrice: '200'
-  }
-]);
-
-onMounted(() => {
-  searchKeyword.value = route.query.keyword || '';
-  if (searchKeyword.value === '无结果') {
+// 获取搜索商品列表
+const fetchSearchGoods = async () => {
+  if (!searchKeyword.value.trim()) {
+    searchGoods.value = [];
     hasResult.value = false;
+    return;
   }
+
+  isLoading.value = true;
+  try {
+    // 构造请求参数
+    const params = {
+      keyword: searchKeyword.value,
+      pageNum: currentPage.value,
+      pageSize: pageSize.value,
+      orderByColumn: sortKeyMap[sortState.value.currentKey] || sortState.value.currentKey,
+      isAsc: sortState.value.currentDir
+    };
+
+    // 调用商品列表接口
+    const res = await goodApi.getProductList(params);
+    if (res.code === 200) {
+      const { rows, total } = res;
+      searchGoods.value = rows || [];
+      totalCount.value = total || 0;
+      // totalPages.value = pages || 1;
+      hasResult.value = !!rows.length;
+    } else {
+      MessagePlugin.error(res.msg || '获取商品列表失败');
+      searchGoods.value = [];
+      hasResult.value = false;
+    }
+  } catch (err) {
+    console.error('搜索商品失败：', err);
+    MessagePlugin.error('网络异常，搜索商品失败');
+    searchGoods.value = [];
+    hasResult.value = false;
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 获取猜你喜欢商品
+const fetchGuessYouLike = async () => {
+  try {
+    const res = await goodApi.getRecommendProducts();
+    if (res.code === 200 && Array.isArray(res.data)) {
+      guessGoods.value = res.data.slice(0, 4); // 取前4个
+    }
+  } catch (err) {
+    console.error('获取猜你喜欢商品失败：', err);
+  }
+};
+
+// 监听路由参数变化，重新搜索
+watch(
+  () => route.query.keyword,
+  (newKeyword) => {
+    searchKeyword.value = newKeyword || '';
+    currentPage.value = 1; // 关键词变化重置页码
+    if (newKeyword) {
+      fetchSearchGoods();
+    } else {
+      searchGoods.value = [];
+      hasResult.value = false;
+    }
+  },
+  { immediate: true }
+);
+
+// 组件挂载时加载猜你喜欢
+onMounted(async () => {
+  await fetchGuessYouLike();
 });
 </script>
 
@@ -201,6 +297,15 @@ onMounted(() => {
   background: #fff;
   border-radius: 14px;
   padding: 20px;
+  min-height: 400px;
+}
+
+/* 加载中样式 */
+.loading-result {
+  text-align: center;
+  padding: 40px 0;
+  font-size: 14px;
+  color: #666;
 }
 
 /* 筛选排序栏样式 */
@@ -246,9 +351,14 @@ onMounted(() => {
 }
 
 .goods-item {
-  width: calc(25% - 15px); /* 1200px容器下一行3个商品 */
+  width: calc(25% - 15px); /* 1200px容器下一行4个商品 */
   border-radius: 8px;
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s;
+  &:hover {
+    transform: translateY(-4px);
+  }
 }
 
 /* 自适应正方形图片 */
@@ -326,5 +436,32 @@ onMounted(() => {
 .empty-text {
   font-size: 14px;
   color: #838486;
+}
+
+/* 分页样式 */
+.pagination {
+  margin-top: 30px;
+  text-align: center;
+  .page-btn {
+    padding: 8px 16px;
+    margin: 0 10px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    &:disabled {
+      cursor: not-allowed;
+      color: #ccc;
+      border-color: #f5f5f5;
+    }
+    &:hover:not(:disabled) {
+      border-color: #3799AE;
+      color: #3799AE;
+    }
+  }
+  .page-info {
+    font-size: 14px;
+    color: #666;
+  }
 }
 </style>

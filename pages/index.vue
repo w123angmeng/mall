@@ -71,7 +71,8 @@
 	  </section>
 	  </div>
     </main>
-    <Footer :footerInfo="footerInfo" />
+    <!-- <Footer :footerInfo="footerInfo" /> -->
+	<Footer />
   </div>
 </template>
 
@@ -87,7 +88,7 @@ import {
   getHomeCategoryList, 
   getHomeHotGoodsList, 
   getHomeRecommendList,
-  getHomeFooterInfo
+  // getHomeFooterInfo
 } from '@/apis/home';
 
 const router = useRouter();
@@ -177,11 +178,11 @@ const { data: recommendRes } = useAsyncData('homeRecommend', () => getHomeRecomm
   transform: (res) => res.data && res.data.length ? res.data : defaultRecommendList,
   server: false
 });
-const { data: footerRes } = useAsyncData('homeFooter', () => getHomeFooterInfo(), {
-  default: () => defaultFooterInfo,
-  transform: (res) => res.data ? res.data : defaultFooterInfo,
-  server: false
-});
+// const { data: footerRes } = useAsyncData('homeFooter', () => getHomeFooterInfo(), {
+//   default: () => defaultFooterInfo,
+//   transform: (res) => res.data ? res.data : defaultFooterInfo,
+//   server: false
+// });
 
 // 响应式数据
 // const bannerList = ref(bannerRes.value);

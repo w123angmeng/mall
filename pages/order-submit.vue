@@ -28,31 +28,50 @@
           <span class="tip-text">必须选择一个主体才能下单</span>
         </div>
 
+        <!-- 未认证提示 -->
+        <div class="no-cert-tip" v-if="!hasCertified">
+          <img src="@/assets/images/tip.png" alt="警告" class="warning-icon">
+          <span class="warning-text">您尚未完成认证，请先<a href="#/certification" class="cert-link">去认证</a>，否则无法下单</span>
+        </div>
+
         <!-- 内容区：背景#F8FAFD + 高度204px -->
         <div class="subject-content">
           <div class="form-group">
-            <label class="form-label required">下单主题：</label>
-            <!-- 复用优化后的单选组件 -->
+            <label class="form-label required">下单主体：</label>
+            <!-- 复用优化后的单选组件，添加切换事件 -->
             <RadioGroup 
               :options="subjectOptions"
               v-model="formData.subject.type"
               groupName="subject-type"
+              @change="handleSubjectChange"
             />
           </div>
 
           <!-- 企业信息区域（选中“企业”时显示） -->
-          <div class="enterprise-info" v-if="formData.subject.type === 'company'">
+          <div class="enterprise-info" v-if="formData.subject.type === 'company' && certInfo">
             <div class="form-row">
               <span class="form-label">企业名称：</span>
-              <span class="form-value">北京岩排材料有限公司</span>
+              <span class="form-value">{{ certInfo.companyName || '暂无' }}</span>
             </div>
             <div class="form-row">
               <span class="form-label">统一社会信用代码：</span>
-              <span class="form-value">SCH8P487975420201</span>
+              <span class="form-value">{{ certInfo.socialCode || '暂无' }}</span>
             </div>
             <div class="form-row">
               <span class="form-label">法人姓名：</span>
-              <span class="form-value">张三</span>
+              <span class="form-value">{{ certInfo.legalName || '暂无' }}</span>
+            </div>
+          </div>
+
+          <!-- 个人信息区域（选中“个人”时显示） -->
+          <div class="personal-info" v-if="formData.subject.type === 'individual' && certInfo">
+            <div class="form-row">
+              <span class="form-label">姓名：</span>
+              <span class="form-value">{{ certInfo.cardName || '暂无' }}</span>
+            </div>
+            <div class="form-row">
+              <span class="form-label">身份证号：</span>
+              <span class="form-value">{{ certInfo.cardNumber || '暂无' }}</span>
             </div>
           </div>
         </div>
@@ -69,7 +88,7 @@
         <!-- 查看全部企业区域（替换展开图标为down.png） -->
         <div class="view-enterprises">
           <span class="view-text">查看全部企业：</span>
-          <button class="expand-btn" @click="toggleExpandEnterprises">
+          <button class="expand-btn" @click="toggleExpandEnterprises" :disabled="!hasCompanyCert">
             展开
             <img src="@/assets/images/down.png" alt="展开" class="expand-icon">
           </button>
@@ -82,7 +101,7 @@
           </div>
           <div class="btn-group">
             <button class="btn-cancel" @click="goToCart">取消</button>
-            <button class="btn-next" @click="toNextStep">下一步</button>
+            <button class="btn-next" @click="toNextStep" :disabled="!hasCertified || !certInfo">下一步</button>
           </div>
         </div>
       </div>
@@ -105,26 +124,78 @@
             :options="contractOptions"
             v-model="formData.contract.type"
             groupName="contract-type"
+            @change="handleContractTypeChange"
           />
         </div>
 
-        <!-- 合同下载区域 -->
-        <div class="form-desc contract-download">
+        <!-- 合同下载区域（仅当选择“需要”合同时显示） -->
+        <div 
+          class="form-desc contract-download" 
+          v-if="formData.contract.type === 'need'"
+        >
           <span>合同下载：</span>
-          <a href="#" class="link">这是合同文件，下载文件名称为20个字符，超过部分...</a>
+          <a 
+            href="javascript:;" 
+            class="link" 
+            @click.prevent="handleDownloadContract"
+            :class="{ disabled: isDownloading }"
+          >
+            {{ contractFileName || '合同文件' }}
+          </a>
           <span class="link-suffix">.pdf</span>
+          <!-- 下载加载中提示 -->
+          <span class="download-loading" v-if="isDownloading">加载中...</span>
         </div>
 
         <!-- 董监高文件附件区域（参考步骤一新增企业按钮样式） -->
         <div class="form-group attachment-group">
-          <label class="form-label">董监高文件附件：</label>
+          <label class="form-label">盖章后上传合同：</label>
           <div class="attachment-content">
-            <button class="upload-btn" @click="handleUploadAttachment">
-              <img src="@/assets/images/upload.png" alt="上传" class="upload-icon">
-              <span class="upload-text">上传文件</span>
-            </button>
+            <!-- 自定义上传组件 -->
+            <t-upload
+              v-model="files"
+              :tips="tips"
+              theme="custom"
+              :before-upload="beforeUpload"
+              multiple
+              @fail="handleUploadFail"
+              @success="handleUploadSuccess"
+              :request-method="customUploadRequest"
+            >
+              <div class="upload-wrap" ref="uploadRef">
+                <button 
+                  class="upload-btn" 
+                  :disabled="isUploading"
+                >
+                  <img src="@/assets/images/upload.png" alt="上传" class="upload-icon">
+                  <span class="upload-text">上传文件</span>
+                </button>
+              </div>
+            </t-upload>
             <span class="form-note">（仅支持.pdf, word, excel, jpg, png）</span>
           </div>
+        </div>
+
+        <!-- 已上传文件列表 -->
+        <div class="upload-file-list" v-if="uploadedFiles.length > 0">
+          <div class="file-list-title">已上传文件：</div>
+          <ul class="file-list">
+            <li 
+              class="file-item" 
+              v-for="(file, index) in uploadedFiles" 
+              :key="index"
+            >
+              <span class="file-name">{{ file.originalName }}</span>
+              <button class="file-delete" @click="deleteFile(index)">×</button>
+            </li>
+          </ul>
+        </div>
+
+        <!-- 上传提示 -->
+        <div class="upload-tip" v-if="uploadTip">
+          <span :class="{ 'error': uploadTipType === 'error', 'success': uploadTipType === 'success' }">
+            {{ uploadTip }}
+          </span>
         </div>
 
         <!-- 底部操作栏 -->
@@ -233,41 +304,103 @@
         <div class="upload-proof-group-wrap">
           <!-- 付款方式单选组（参考步骤一单选样式） -->
           <div class="form-group pay-radio-group">
-            <label class="form-label required">付款主题：</label>
+            <label class="form-label required">付款方式：</label>
             <RadioGroup 
-              :options="payOptions"
-              v-model="formData.pay.type"
-              groupName="pay-type"
-            />
+                    :options="payOptions"
+                    v-model="formData.pay.type"
+                    groupName="pay-type"
+                    @change="handlePayTypeChange"
+                  />
           </div>
 
-          <!-- 上传付款凭证（参考步骤一新增企业按钮样式） -->
-          <div class="form-group upload-proof-group">
-            <label class="form-label">上传付款凭证：</label>
-            <button class="upload-btn" @click="handleUploadPayProof">
-              <img src="@/assets/images/upload.png" alt="上传" class="upload-icon">
-              <span class="upload-text">上传文件</span>
-            </button>
-            <span class="form-note">格式支持pdf、word、excel、jpeg、png。</span>
-          </div>
-
+          <!-- 立即付款专属区域 -->
+              <div v-if="formData.pay.type === 'immediate'">
+                <!-- 上传付款凭证（复用合同上传组件） -->
+                <div class="form-group upload-proof-group">
+                  <label class="form-label">上传付款凭证：</label>
+                  <div class="attachment-content">
+                    <t-upload
+                      v-model="payVoucherFiles"
+                      :tips="payVoucherTips"
+                      theme="custom"
+                      :before-upload="beforeUpload"
+                      single
+                      @fail="handleUploadFail"
+                      @success="handlePayVoucherUploadSuccess"
+                      :request-method="customPayVoucherUploadRequest"
+                    >
+                      <div class="upload-wrap" ref="payVoucherUploadRef">
+                        <button 
+                          class="upload-btn" 
+                          :disabled="isPayVoucherUploading"
+                        >
+                          <img src="@/assets/images/upload.png" alt="上传" class="upload-icon">
+                          <span class="upload-text">上传文件</span>
+                        </button>
+                      </div>
+                    </t-upload>
+                    <span class="form-note">（仅支持.pdf, word, excel, jpg, png）</span>
+                  </div>
+                </div>
+				
+				<!-- 已上传付款凭证列表 -->
+				      <div class="upload-file-list" v-if="uploadedPayVoucherFiles.length > 0">
+				        <div class="file-list-title">已上传付款凭证：</div>
+				        <ul class="file-list">
+				          <li 
+				            class="file-item" 
+				            v-for="(file, index) in uploadedPayVoucherFiles" 
+				            :key="index"
+				          >
+				            <span class="file-name">{{ file.originalName }}</span>
+				            <button class="file-delete" @click="deletePayVoucherFile(index)">×</button>
+				          </li>
+				        </ul>
+				      </div>
           <!-- 收款方信息（匹配UI图排版） -->
           <div class="payee-info">
             <div class="payee-row">
               <span class="payee-label">收款方名称：</span>
-              <span class="payee-value">北京优创锐科技有限公司</span>
+              <span class="payee-value">{{payInfo.payName}}</span>
             </div>
             <div class="payee-row">
               <span class="payee-label">收款方开户行：</span>
-              <span class="payee-value">5DHJHF88775432201</span>
+              <span class="payee-value">{{payInfo.bankName}}</span>
             </div>
             <div class="payee-row">
               <span class="payee-label">收款账号：</span>
-              <span class="payee-value">6288 8888 8888 8888</span>
+              <span class="payee-value">{{payInfo.bankAccount}}</span>
             </div>
           </div>
         </div>
-
+		
+		
+		<!-- 账期付款专属区域 -->
+		    <div v-if="formData.pay.type === 'installment'" class="payment-type-content">
+		      <div class="payment-desc">
+		        <p>账期付款说明：</p>
+		        <ul>
+		          <li>1. 账期时长：{{installmentInfo.period || 30}}天</li>
+		          <li>2. 账期额度：¥{{installmentInfo.limit || 0}}</li>
+		          <li>3. 剩余可用额度：¥{{installmentInfo.remainingLimit || 0}}</li>
+		          <li>4. 还款截止日期：{{installmentInfo.deadline || '下单后30天'}}</li>
+		        </ul>
+		      </div>
+		    </div>
+		
+		    <!-- 授信付款专属区域 -->
+		    <div v-if="formData.pay.type === 'credit'" class="payment-type-content">
+		      <div class="payment-desc">
+		        <p>授信付款说明：</p>
+		        <ul>
+		          <li>1. 授信总额度：¥{{creditInfo.totalLimit || 0}}</li>
+		          <li>2. 已用额度：¥{{creditInfo.usedLimit || 0}}</li>
+		          <li>3. 剩余额度：¥{{creditInfo.remainingLimit || 0}}</li>
+		          <li>4. 授信有效期：{{creditInfo.expireDate || '长期有效'}}</li>
+		        </ul>
+		      </div>
+		    </div>
+		  </div>
         <!-- 底部操作栏 -->
         <div class="step-footer">
           <div class="total-amount">
@@ -290,155 +423,224 @@
           <span class="tip-title">收票及结算信息</span>
           <span class="tip-desc">请您信息核对无误后再下单，没有票则不需要！</span>
         </div>
-		<div class="subject-content">
-        <!-- 是否需要发票单选组 -->
-        <div class="form-group invoice-radio-group">
-          <label class="form-label required">是否需要发票：</label>
-          <RadioGroup 
-            :options="invoiceOptions"
-            v-model="formData.other.invoiceType"
-            groupName="invoice-type"
-          />
-        </div>
+        <div class="subject-content">
+          <!-- 是否需要发票单选组 -->
+          <div class="form-group invoice-radio-group">
+            <label class="form-label required">是否需要发票：</label>
+            <RadioGroup 
+              :options="invoiceOptions"
+              v-model="formData.other.invoiceType"
+              groupName="invoice-type"
+            />
+          </div>
 
-        <!-- 企业信息区域 -->
-        <div class="company-info">
-          <div class="info-row">
-            <span class="info-label">企业名称：</span>
-            <span class="info-value">北京优创锐科技有限公司</span>
-            <button class="edit-btn">✎</button>
+          <!-- 企业信息区域 -->
+          <div class="company-info">
+            <div class="info-row">
+              <span class="info-label">企业名称：</span>
+              <span class="info-value">北京优创锐科技有限公司</span>
+              <button class="edit-btn">✎</button>
+            </div>
+            <div class="info-row">
+              <span class="info-label">统一社会信用代码：</span>
+              <span class="info-value">91110108MA01A4PWVT</span>
+              <button class="edit-btn">✎</button>
+            </div>
+            <div class="info-row">
+              <span class="info-label">公司地址：</span>
+              <span class="info-value">北京市海淀区中关村826号创科园号楼5099</span>
+              <button class="edit-btn">✎</button>
+            </div>
+            <div class="info-row">
+              <span class="info-label">公司电话：</span>
+              <span class="info-value">010-86437388</span>
+              <button class="edit-btn">✎</button>
+            </div>
+            <div class="info-row">
+              <span class="info-label">开户行：</span>
+              <span class="info-value">中国交通银行股份有限公司北京紫竹支行</span>
+              <button class="edit-btn">✎</button>
+            </div>
+            <div class="info-row">
+              <span class="info-label">银行账号：</span>
+              <span class="info-value">20230606000000000001</span>
+              <button class="edit-btn">✎</button>
+            </div>
+            <div class="info-row">
+              <span class="info-label">行号：</span>
+              <span class="info-value">0200000052</span>
+              <button class="edit-btn">✎</button>
+            </div>
           </div>
-          <div class="info-row">
-            <span class="info-label">统一社会信用代码：</span>
-            <span class="info-value">91110108MA01A4PWVT</span>
-            <button class="edit-btn">✎</button>
-          </div>
-          <div class="info-row">
-            <span class="info-label">公司地址：</span>
-            <span class="info-value">北京市海淀区中关村826号创科园号楼5099</span>
-            <button class="edit-btn">✎</button>
-          </div>
-          <div class="info-row">
-            <span class="info-label">公司电话：</span>
-            <span class="info-value">010-86437388</span>
-            <button class="edit-btn">✎</button>
-          </div>
-          <div class="info-row">
-            <span class="info-label">开户行：</span>
-            <span class="info-value">中国交通银行股份有限公司北京紫竹支行</span>
-            <button class="edit-btn">✎</button>
-          </div>
-          <div class="info-row">
-            <span class="info-label">银行账号：</span>
-            <span class="info-value">20230606000000000001</span>
-            <button class="edit-btn">✎</button>
-          </div>
-          <div class="info-row">
-            <span class="info-label">行号：</span>
-            <span class="info-value">0200000052</span>
-            <button class="edit-btn">✎</button>
-          </div>
-        </div>
 
-        <!-- 开票信息 & 付款摘要输入框 -->
-        <div class="form-group invoice-input-group">
-          <label class="form-label">开票信息：</label>
-          <input 
-            type="text" 
-            class="form-input invoice-input"
-            placeholder="请按照实际开票信息输入，可修改"
-            v-model="formData.other.invoiceInfo"
-          >
-          <span class="char-count">0/200</span>
+          <!-- 开票信息 & 付款摘要输入框 -->
+          <div class="form-group invoice-input-group">
+            <label class="form-label">开票信息：</label>
+            <input 
+              type="text" 
+              class="form-input invoice-input"
+              placeholder="请按照实际开票信息输入，可修改"
+              v-model="formData.other.invoiceInfo"
+            >
+            <span class="char-count">0/200</span>
+          </div>
+          <div class="form-group payment-summary-group">
+            <label class="form-label">付款摘要：</label>
+            <input 
+              type="text" 
+              class="form-input summary-input"
+              placeholder="请输入"
+              v-model="formData.other.paymentSummary"
+            >
+            <span class="char-count">0/200</span>
+          </div>
         </div>
-        <div class="form-group payment-summary-group">
-          <label class="form-label">付款摘要：</label>
-          <input 
-            type="text" 
-            class="form-input summary-input"
-            placeholder="请输入"
-            v-model="formData.other.paymentSummary"
-          >
-          <span class="char-count">0/200</span>
-        </div>
-		</div>
         <!-- 订单信息区域 -->
         <div class="order-info-container">
           <h3 class="order-info-title">订单信息</h3>
-		  <div class="subject-content">
-          <div class="order-info-content">
-            <!-- 商品列表 -->
-            <div class="goods-list">
-              <div class="goods-item" v-for="(item, idx) in orderGoods" :key="idx">
-                <img :src="item.img" alt="商品" class="goods-img">
-                <div class="goods-detail">
-                  <div class="goods-name">{{ item.name }}</div>
-                  <div class="goods-desc">型号：统一 规格</div>
+          <div class="subject-content">
+            <div class="order-info-content">
+              <!-- 商品列表 -->
+              <div class="goods-list">
+                  <div class="goods-item" v-for="(item, idx) in orderGoods" :key="idx">
+                    <img :src="item.productImage || '/images/product.png'" alt="商品" class="goods-img">
+                    <div class="goods-detail">
+                      <div class="goods-name">{{ item.productName }}</div>
+                      <div class="goods-desc" v-if="item.singleSpec">规格：{{ item.singleSpec }}</div>
+                      <div class="goods-desc" v-else-if="item.specJson">规格：{{ formatSpecJson(item.specJson) }}</div>
+                    </div>
+                    <div class="goods-count">× {{ item.payNum }}</div>
+                    <div class="goods-price">¥{{ item.productPrice.toFixed(2) }}</div>
+                  </div>
                 </div>
-                <div class="goods-count">× {{ item.count }}</div>
-                <div class="goods-price">¥{{ item.price }}</div>
+              <!-- 订单汇总 -->
+              <div class="order-summary">
+                <div class="summary-inner">
+                  <div class="summary-item">
+                          <span class="summary-label">商品总数：</span>
+                          <span class="summary-value">{{ totalNum }}</span>
+                        </div>
+                        <div class="summary-item">
+                          <span class="summary-label">商品金额：</span>
+                          <span class="summary-value">¥{{ totalAmount.toFixed(2) }}</span>
+                        </div>
+                        <div class="summary-item total">
+                          <span class="summary-label">结算金额：</span>
+                          <span class="summary-value">¥{{ payAmount.toFixed(2) }}</span>
+                        </div>
+                </div>
               </div>
             </div>
-            <!-- 订单汇总 -->
-            <div class="order-summary">
-                  <div class="summary-inner">
-                    <div class="summary-item">
-                      <span class="summary-label">商品总数：</span>
-                      <span class="summary-value">{{ totalGoodsCount }}</span>
-                    </div>
-                    <div class="summary-item">
-                      <span class="summary-label">商品金额：</span>
-                      <span class="summary-value">¥{{ totalGoodsAmount }}</span>
-                    </div>
-                    <div class="summary-item total">
-                      <span class="summary-label">结算金额：</span>
-                      <span class="summary-value">¥{{ totalAmount }}</span>
-                    </div>
-                  </div>
-            </div>
           </div>
-		  </div>
         </div>
 
         <!-- 订单其他补充 -->
         <div class="order-supplement">
           <h3 class="supplement-title">订单其他补充</h3>
-		  <div class="subject-content">
-          <div class="form-group contract-remark-group">
-            <label class="form-label">客户合同备注：</label>
-            <input 
-              type="text" 
-              class="form-input remark-input"
-              placeholder="请按照实际输入，可修改"
-              v-model="formData.other.contractRemark"
-            >
-            <span class="char-count">0/200</span>
-          </div>
-          <div class="form-group order-remark-group">
-            <label class="form-label">订单备注：</label>
-            <input 
-              type="text" 
-              class="form-input remark-input"
-              placeholder="请输入"
-              v-model="formData.other.orderRemark"
-            >
-            <span class="char-count">0/200</span>
-          </div>
-        </div>
-		</div>
-		<div class="subject-content">
-        <!-- 底部操作栏 -->
-        <div class="step-footer info-footer">
-          <div class="total-amount">
-            结算总额：<span class="amount-value">¥{{ totalAmount }}</span>
-          </div>
-          <div class="btn-group">
-            <button class="btn-cancel" @click="goToCart">取消</button>
-            <button class="btn-prev" @click="toPrevStep">上一步</button>
-            <button class="btn-submit" @click="submitOrder">提交订单</button>
+          <div class="subject-content">
+            <div class="form-group contract-remark-group">
+              <label class="form-label">客户合同备注：</label>
+              <input 
+                type="text" 
+                class="form-input remark-input"
+                placeholder="请按照实际输入，可修改"
+                v-model="formData.other.contractRemark"
+              >
+              <span class="char-count">0/200</span>
+            </div>
+            <div class="form-group order-remark-group">
+              <label class="form-label">订单备注：</label>
+              <input 
+                type="text" 
+                class="form-input remark-input"
+                placeholder="请输入"
+                v-model="formData.other.orderRemark"
+              >
+              <span class="char-count">0/200</span>
+            </div>
           </div>
         </div>
-		</div>
+        <div class="subject-content">
+          <!-- 底部操作栏 -->
+          <div class="step-footer info-footer">
+            <div class="total-amount">
+              结算总额：<span class="amount-value">¥{{ totalAmount }}</span>
+            </div>
+            <div class="btn-group">
+              <button class="btn-cancel" @click="goToCart">取消</button>
+              <button class="btn-prev" @click="toPrevStep">上一步</button>
+              <button class="btn-submit" @click="submitOrder">提交订单</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 企业选择弹窗 -->
+    <div class="enterprise-modal-mask" v-if="showEnterpriseModal">
+      <div class="enterprise-modal">
+        <div class="modal-header">
+          <h3 class="modal-title">选择企业</h3>
+          <button class="modal-close" @click="showEnterpriseModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="enterprise-list">
+            <div 
+              class="enterprise-item" 
+              v-for="item in enterpriseList" 
+              :key="item.id"
+              :class="{ active: selectedEnterpriseId === item.id }"
+              @click="selectedEnterpriseId = item.id"
+            >
+              <div class="enterprise-name">{{ item.companyName }}</div>
+              <div class="enterprise-code">统一社会信用代码：{{ item.socialCode }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="showEnterpriseModal = false">取消</button>
+          <button class="btn-confirm" @click="confirmEnterpriseSelect" :disabled="!selectedEnterpriseId">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 收货地址选择弹窗 -->
+    <div class="address-modal-mask" v-if="showAddressModal">
+      <div class="address-modal">
+        <div class="modal-header">
+          <h3 class="modal-title">选择收货地址</h3>
+          <button class="modal-close" @click="showAddressModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="address-list" v-if="addressList.length > 0">
+            <div 
+              class="address-item" 
+              v-for="item in addressList" 
+              :key="item.id"
+              :class="{ active: selectedAddressId === item.id }"
+              @click="selectedAddressId = item.id"
+            >
+              <div class="address-name-phone">
+                <span class="address-name">{{ item.realName }}</span>
+                <span class="address-phone">{{ item.phone }}</span>
+                <span class="address-default" v-if="item.isDefault">默认地址</span>
+              </div>
+              <div class="address-detail">
+                {{ item.province }} {{ item.city }} {{ item.district }} {{ item.street }} {{ item.detail }}
+              </div>
+              <div class="address-requirement" v-if="item.requirement">
+                特殊要求：{{ item.requirement }}
+              </div>
+            </div>
+          </div>
+          <div class="no-address" v-else>
+            暂无收货地址，请先添加
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" @click="showAddressModal = false">取消</button>
+          <button class="btn-confirm" @click="confirmAddressSelect" :disabled="!selectedAddressId || addressList.length === 0">确定</button>
+        </div>
       </div>
     </div>
 
@@ -448,15 +650,31 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 // 导入公共组件
 import Header from '@/components/common/Header.vue';
 import Footer from '@/components/common/Footer.vue';
 import RadioGroup from '@/components/common/RadioGroup.vue';
 import OrderStepNav from '@/components/common/OrderStepNav.vue';
+// 导入API
+import { getOrderApi } from '@/apis/order';
+import { getVerifyApi } from '@/apis/credit';
+import { uploadFile } from '@/apis/common'; // 导入上传文件API
+import { getDefaultAddress, getAddressList } from '@/apis/address'; // 新增地址接口
+// 导入状态管理（根据项目实际使用的Vuex/Pinia调整）
+import { useUserStore } from '@/stores/user';
+// 导入TDesign的消息提示（按需）
+import { MessagePlugin } from 'tdesign-vue-next';
 
+// 初始化用户Store
+const userStore = useUserStore();
 const router = useRouter();
+const route = useRoute(); // 获取当前路由参数
+
+// 初始化API实例
+const orderApi = getOrderApi();
+const verifyApi = getVerifyApi();
 
 // 步骤配置
 const stepList = ref([
@@ -466,19 +684,77 @@ const stepList = ref([
   '付款方式',
   '信息确认'
 ]);
-const currentStep = ref(5);
+const currentStep = ref(1);
 
-// 全步骤表单数据（最后提交直接获取）
+// 存储接口数据
+const certInfo = ref(null); // 认证信息
+const payInfo = ref(null); // 收款信息
+const isLoading = ref(false); // 全局加载状态
+const defaultAddress = ref(null); // 默认收货地址
+const addressList = ref([]); // 收货地址列表
+const installmentInfo = ref({ // 账期付款信息
+  period: 30,
+  limit: 100000,
+  remainingLimit: 80000,
+  deadline: '2025-12-31'
+});
+const creditInfo = ref({ // 授信付款信息
+  totalLimit: 200000,
+  usedLimit: 50000,
+  remainingLimit: 150000,
+  expireDate: '2026-12-31'
+});
+
+// 合同下载相关
+const isDownloading = ref(false); // 下载中状态
+const contractFileName = ref(''); // 合同文件名
+
+// TDesign Upload组件绑定值（合同上传）
+const files = ref([]);
+const tips = ref('上传文件大小在 5M 以内');
+
+// 合同文件上传相关
+const uploadRef = ref(null); // 上传容器ref
+const isUploading = ref(false); // 上传中状态
+const uploadedFiles = ref([]); // 已上传文件列表
+const uploadTip = ref(''); // 上传提示信息
+const uploadTipType = ref(''); // 提示类型：success/error
+// 支持的文件类型
+const acceptTypes = ref('.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png');
+// 允许的文件大小（5M）
+const maxFileSize = ref(5 * 1024 * 1024);
+
+// 付款凭证上传相关
+const payVoucherFiles = ref([]);
+const payVoucherTips = ref('付款凭证大小在5M以内');
+const payVoucherUploadRef = ref(null);
+const isPayVoucherUploading = ref(false);
+const uploadedPayVoucherFiles = ref([]); // 存储付款凭证上传文件
+const payVoucherTip = ref('');
+const payVoucherTipType = ref('');
+
+// 收货地址弹窗相关
+const showAddressModal = ref(false); // 地址弹窗显示状态
+const selectedAddressId = ref(''); // 选中的地址ID
+
+// 企业列表弹窗
+const showEnterpriseModal = ref(false)
+const enterpriseList = ref([])
+const selectedEnterpriseId = ref('')
+
+// 全步骤表单数据
 const formData = reactive({
   // 步骤1：下单主体
   subject: {
-    type: 'company', // company/individual
-    isSelf: 'true'
+    type: '',
+    isSelf: 'true',
+    certId: ''
   },
   // 步骤2：订单合同
   contract: {
     type: 'need', // need/notNeed
-    isUpload: 'true'
+    isUpload: 'true',
+    attachmentIds: [] // 存储上传文件的ossId
   },
   // 步骤3：收货地址
   address: {
@@ -486,15 +762,18 @@ const formData = reactive({
     phone: '',
     detail: '',
     note: '',
-    isSaved: 'true'
+    isSaved: 'true',
+    addressId: ''
   },
-  // 步骤4：付款方式（匹配UI图选项）
+  // 步骤4：付款方式
   pay: {
-    type: 'immediate' // immediate/installment/credit
+    type: 'immediate', // immediate/installment/credit
+    payVoucherId: null, // 付款凭证ID
+    payVoucherName: '' // 付款凭证名称
   },
   // 步骤5：信息确认
   other: {
-    invoiceType: 'need', // need/notNeed
+    invoiceType: 'need',
     invoiceInfo: '',
     paymentSummary: '',
     contractRemark: '',
@@ -507,87 +786,660 @@ const subjectOptions = ref([
   { label: '企业', value: 'company' },
   { label: '个人', value: 'individual' }
 ]);
+
 const contractOptions = ref([
   { label: '需要', value: 'need' },
   { label: '不需要', value: 'notNeed' }
 ]);
-// 付款方式选项（匹配UI图：立即/分期/授信）
+
 const payOptions = ref([
   { label: '立即付款', value: 'immediate' },
-  { label: '分期付款', value: 'installment' },
+  { label: '账期付款', value: 'installment' },
   { label: '授信付款', value: 'credit' }
 ]);
-// 是否需要发票选项
+
 const invoiceOptions = ref([
   { label: '需要', value: 'need' },
   { label: '不需要', value: 'notNeed' }
 ]);
 
-// 订单商品数据（模拟）
-const orderGoods = ref([
-  {
-    img: '/images/product.png',
-    name: 'PPTE耐酸碱玻纤系列滤袋',
-    count: 1,
-    price: '899.00'
-  },
-  {
-    img: '/images/product.png',
-    name: 'PPTE耐酸碱玻纤系列滤袋',
-    count: 1,
-    price: '899.00'
-  }
-]);
+// 订单商品数据（从路由参数解析）
+const orderGoods = ref([]);
+const totalNum = ref(0); // 商品总数量
+const totalAmount = ref(0); // 商品总金额
+const payAmount = ref(0); // 结算金额
 
-// 计算商品总数、总金额
+// 计算属性 - 商品总数、总金额（兼容旧数据）
 const totalGoodsCount = computed(() => {
-  return orderGoods.value.reduce((sum, item) => sum + item.count, 0);
+  return orderGoods.value.reduce((sum, item) => sum + item.payNum, 0);
 });
+
 const totalGoodsAmount = computed(() => {
-  return orderGoods.value.reduce((sum, item) => sum + item.count * Number(item.price), 0).toFixed(2);
+  return orderGoods.value.reduce((sum, item) => sum + item.payNum * Number(item.productPrice), 0).toFixed(2);
 });
-const totalAmount = computed(() => {
-  return totalGoodsAmount.value;
+
+// 计算属性 - 用户认证状态
+const userCertified = computed(() => {
+  return userStore.userInfo?.certified || 0;
 });
+
+const hasCertified = computed(() => {
+  return userCertified.value !== 0;
+});
+
+const hasCompanyCert = computed(() => {
+  return [2, 3].includes(userCertified.value);
+});
+
+const hasPersonCert = computed(() => {
+  return [1, 3].includes(userCertified.value);
+});
+
+// 页面初始化
+onMounted(async () => {
+  try {
+    const [payInfoRes] = await Promise.all([
+      orderApi.getPayInfo(),
+      getDefaultAddressData(), // 加载默认地址
+    ]);
+    if (payInfoRes.code === 200) {
+      payInfo.value = payInfoRes.data;
+    }
+    // 设置默认下单主体
+    await setDefaultSubjectType();
+    // 解析商品详情页传递的参数
+    parseOrderParams();
+  } catch (error) {
+    console.error('初始化数据失败：', error);
+    MessagePlugin.error('数据加载失败，请刷新页面重试');
+  }
+});
+
+// 解析路由中的订单参数
+// 提交订单页 - 解析路由参数（修改后）
+const parseOrderParams = () => {
+  try {
+    if (route.query.orderData) {
+      // 解码并解析路由参数
+      const orderParams = JSON.parse(decodeURIComponent(route.query.orderData));
+      
+      // 校验关键参数是否存在
+      if (!orderParams.productId || !orderParams.skuId) {
+        throw new Error('商品/skuID缺失');
+      }
+
+      // 构造符合YpOrderDetailDTO的订单商品列表
+      const orderDetail = {
+        cartId: null, // 立即购买无购物车ID，传null
+        productId: Number(orderParams.productId), // 转为数字类型（必需）
+        productImage: '1783029971277717506' || orderParams.productImageId || orderParams.productImage, // 优先用图片ID，无则用URL
+        productName: orderParams.productName, // 商品名称（必需）
+        specType: Number(orderParams.specType) || 0, // 规格类型（0单1多，必需）
+        skuId: Number(orderParams.skuId), // SKU ID（必需）
+        singleSpec: orderParams.singleSpec || '', // 单规格信息（specType=0时传）
+        specJson: orderParams.specJson || '', // 多规格JSON（specType=1时传）
+        productPrice: Number(orderParams.salePrice), // 商品单价（必需，转为数字）
+        payNum: Number(orderParams.buyNum), // 购买数量（对应buyNum，转为数字，必需）
+        totalPrice: Number(orderParams.totalPrice) || (Number(orderParams.salePrice) * Number(orderParams.buyNum)), // 商品总价
+      };
+
+      // 赋值到订单商品列表
+      orderGoods.value = [orderDetail];
+      
+      // 计算汇总数据（对应提交订单的总数量/总金额）
+      totalNum.value = orderDetail.payNum; // 商品总数量
+      totalAmount.value = orderDetail.totalPrice; // 商品总金额
+      payAmount.value = orderDetail.totalPrice; // 结算金额（暂时和总金额一致，可加优惠逻辑）
+    } else {
+      // 无参数时用模拟数据兜底
+      orderGoods.value = [
+        {
+          productId: 1,
+          productImage: '/images/product.png',
+          productName: 'PPTE耐酸碱玻纤系列滤袋',
+          specType: 0,
+          skuId: 1001,
+          singleSpec: '统一规格',
+          productPrice: 899.00,
+          payNum: 2,
+          totalPrice: 1798.00
+        }
+      ];
+      totalNum.value = 2;
+      totalAmount.value = 1798.00;
+      payAmount.value = 1798.00;
+    }
+  } catch (error) {
+    console.error('解析订单参数失败：', error);
+    MessagePlugin.error('商品信息解析失败，请重新下单');
+    // 兜底模拟数据
+    orderGoods.value = [
+      {
+        productId: 1,
+        productImage: '/images/product.png',
+        productName: 'PPTE耐酸碱玻纤系列滤袋',
+        specType: 0,
+        skuId: 1001,
+        singleSpec: '统一规格',
+        productPrice: 899.00,
+        payNum: 2,
+        totalPrice: 1798.00
+      }
+    ];
+    totalNum.value = 2;
+    totalAmount.value = 1798.00;
+    payAmount.value = 1798.00;
+  }
+};
+// 获取默认收货地址
+const getDefaultAddressData = async () => {
+  try {
+    const res = await getDefaultAddress();
+    if (res.code === 200 && res.data) {
+      defaultAddress.value = res.data;
+      // 将默认地址填充到表单
+      formData.address.name = res.data.realName;
+      formData.address.phone = res.data.phone;
+      formData.address.detail = `${res.data.province} ${res.data.city} ${res.data.district} ${res.data.street} ${res.data.detail}`;
+      formData.address.note = res.data.requirement || '';
+      formData.address.addressId = res.data.id;
+    }
+  } catch (error) {
+    console.error('获取默认地址失败：', error);
+    MessagePlugin.warning('未获取到默认收货地址');
+  }
+};
+
+// 获取收货地址列表
+const getAddressListData = async () => {
+  try {
+    const res = await getAddressList();
+    if (res.code === 200) {
+      addressList.value = res.data;
+      // 默认选中第一个地址
+      if (addressList.value.length > 0) {
+        selectedAddressId.value = addressList.value[0].id;
+      }
+    }
+  } catch (error) {
+    console.error('获取地址列表失败：', error);
+    MessagePlugin.error('获取收货地址列表失败');
+  }
+};
+
+// 设置默认下单主体
+const setDefaultSubjectType = async () => {
+  if (hasCompanyCert.value) {
+    formData.subject.type = 'company';
+  } else if (hasPersonCert.value) {
+    formData.subject.type = 'individual';
+  } else {
+    formData.subject.type = 'company';
+  }
+  await getDefaultCertInfo();
+};
+
+// 获取默认认证信息
+const getDefaultCertInfo = async () => {
+  if (!hasCertified.value) {
+    certInfo.value = null;
+    return;
+  }
+  try {
+    const certType = formData.subject.type === 'company' ? 1 : 0;
+    const res = await verifyApi.getDefaultCert({ certType });
+    if (res.code === 200 && res.data) {
+      const detailRes = await verifyApi.getCertDetail(res.data.id);
+      if (detailRes.code === 200) {
+        certInfo.value = detailRes.data.cert;
+        formData.subject.certId = detailRes.data.cert.id;
+      }
+    } else {
+      certInfo.value = null;
+    }
+  } catch (error) {
+    console.error('获取认证信息失败：', error);
+    certInfo.value = null;
+  }
+};
+
+// 监听下单主体类型变化
+watch(
+  () => formData.subject.type,
+  async () => {
+    await getDefaultCertInfo();
+  },
+  { immediate: true }
+);
+
+// 下单主体切换事件
+const handleSubjectChange = async (value) => {
+  formData.subject.type = value;
+  await getDefaultCertInfo();
+};
+
+// 展开企业列表弹窗
+const toggleExpandEnterprises = async () => {
+  try {
+    // 获取企业认证列表
+    const res = await verifyApi.getCompanyCertList();
+    if (res.code === 200) {
+      enterpriseList.value = res.data;
+      showEnterpriseModal.value = true;
+      // 默认选中第一个企业
+      if (enterpriseList.value.length > 0) {
+        selectedEnterpriseId.value = enterpriseList.value[0].id;
+      }
+    }
+  } catch (error) {
+    console.error('获取企业列表失败：', error);
+    MessagePlugin.error('获取企业列表失败，请重试');
+  }
+};
+
+// 确认选择企业
+const confirmEnterpriseSelect = async () => {
+  if (!selectedEnterpriseId.value) return;
+  try {
+    // 获取选中企业的详情
+    const detailRes = await verifyApi.getCertDetail(selectedEnterpriseId.value);
+    if (detailRes.code === 200) {
+      certInfo.value = detailRes.data.cert;
+      formData.subject.certId = detailRes.data.cert.id;
+      showEnterpriseModal.value = false;
+    }
+  } catch (error) {
+    console.error('获取企业详情失败：', error);
+    MessagePlugin.error('选择企业失败，请重试');
+  }
+};
 
 // 新增企业方法
 const handleAddEnterprise = () => {
-  // 可补充新增企业的业务逻辑
-  alert('新增企业按钮点击');
+  // 跳转到企业认证页面
+  router.push('/certification/company');
 };
 
-// 董监高文件附件上传方法
-const handleUploadAttachment = () => {
-  // 可补充文件上传逻辑
-  alert('董监高文件附件上传按钮点击');
+// 合同类型切换事件
+const handleContractTypeChange = (value) => {
+  formData.contract.type = value;
 };
 
-// 付款凭证上传方法（参考步骤一按钮逻辑）
-const handleUploadPayProof = () => {
-  // 可补充文件上传逻辑
-  alert('付款凭证上传按钮点击');
+// 付款方式切换事件
+const handlePayTypeChange = (value) => {
+  formData.pay.type = value;
 };
 
-// 展开/收起企业名录方法
-const toggleExpandEnterprises = () => {
-  // 可补充展开/收起的业务逻辑
-  alert('展开企业名录按钮点击');
+// 合同下载方法
+const handleDownloadContract = async () => {
+  try {
+    isDownloading.value = true;
+    uploadTip.value = '';
+    // 调用下载合同接口
+    const res = await orderApi.downloadContract();
+    if (res.code === 200 && res.data) {
+      const { url, originalName, name } = res.data;
+      // 保存合同文件名
+      contractFileName.value = originalName || name || '合同文件';
+      // 创建下载链接
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = contractFileName.value;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // 提示下载成功
+      uploadTip.value = `合同《${contractFileName.value}》下载成功`;
+      uploadTipType.value = 'success';
+    } else {
+      uploadTip.value = `下载失败：${res.msg || '接口返回异常'}`;
+      uploadTipType.value = 'error';
+    }
+  } catch (error) {
+    console.error('合同下载失败：', error);
+    uploadTip.value = `下载失败：${error.message || '网络异常'}`;
+    uploadTipType.value = 'error';
+  } finally {
+    isDownloading.value = false;
+    // 3秒后清除提示
+    setTimeout(() => {
+      uploadTip.value = '';
+    }, 3000);
+  }
 };
 
-// 展开/收起地址方法
-const toggleExpandAddresses = () => {
-  // 可补充展开/收起地址的业务逻辑
-  alert('展开全部地址按钮点击');
+// TDesign Upload - 上传前校验
+const beforeUpload = (file) => {
+  // 获取原生文件对象
+  const nativeFile = file.raw || file;
+  // 文件大小校验
+  if (nativeFile.size > maxFileSize.value) {
+    const fileName = file.name || nativeFile.name;
+    MessagePlugin.warning(`文件${fileName}超过5M，无法上传`);
+    uploadTip.value = `文件${fileName}超过5M，无法上传`;
+    uploadTipType.value = 'error';
+    setTimeout(() => {
+      uploadTip.value = '';
+    }, 3000);
+    return false;
+  }
+
+  // 文件类型校验
+  const fileName = (file.name || nativeFile.name).toLowerCase();
+  const isAccept = acceptTypes.value
+    .split(',')
+    .some(type => fileName.endsWith(type.toLowerCase().replace('.', '')));
+  if (!isAccept) {
+    MessagePlugin.warning(`文件${fileName}类型不支持，仅支持pdf、word、excel、jpg、png`);
+    uploadTip.value = `文件${fileName}类型不支持，仅支持pdf、word、excel、jpg、png`;
+    uploadTipType.value = 'error';
+    setTimeout(() => {
+      uploadTip.value = '';
+    }, 3000);
+    return false;
+  }
+
+  return true;
+};
+
+// TDesign Upload - 合同自定义上传请求
+const customUploadRequest = async (options) => {
+  // 第一步：判断参数类型，提取文件列表和回调函数
+  let fileList = [];
+  let globalOnSuccess, globalOnError;
+
+  // 情况1：参数是单个包装文件对象（多数TDesign版本的传递方式）
+  if (options && options.raw && options.status) {
+    fileList = [options];
+    globalOnSuccess = options.onSuccess;
+    globalOnError = options.onError;
+  } 
+  // 情况2：参数是文件数组（少数版本）
+  else if (Array.isArray(options)) {
+    fileList = options;
+    // 若数组中无回调，从第一个元素取（或组件会单独传递）
+    globalOnSuccess = options[0]?.onSuccess;
+    globalOnError = options[0]?.onError;
+  }
+
+  if (fileList.length === 0) return;
+
+  isUploading.value = true;
+
+  // 多文件上传提示
+  if (fileList.length > 1) {
+    uploadTip.value = `正在上传${fileList.length}个文件...`;
+    uploadTipType.value = '';
+  }
+
+  // 遍历包装后的文件对象
+  for (const wrappedFile of fileList) {
+    // 第二步：获取原生File对象和包装后的信息
+    const nativeFile = wrappedFile.raw; // 真实的File对象
+    const fileName = wrappedFile.name || nativeFile.name; // 文件名（优先取包装后的name）
+    
+    try {
+      // 单个文件上传提示
+      if (fileList.length === 1) {
+        uploadTip.value = `正在上传${fileName}...`;
+        uploadTipType.value = '';
+      }
+
+      // 调用上传接口
+      const res = await uploadFile({file: nativeFile});
+      if (res.code === 200 && res.data) {
+        const { ossId, originalName, name, url } = res.data;
+        // 保存上传文件信息（混合原生文件和返回数据）
+        const fileInfo = {
+          ossId,
+          originalName: originalName || name || fileName,
+          name,
+          url,
+          file: nativeFile, // 存储原生文件
+          wrappedFile: wrappedFile // 可选：存储包装后的对象
+        };
+        uploadedFiles.value.push(fileInfo);
+        // 更新表单中的附件ID
+        formData.contract.attachmentIds.push(ossId);
+        
+        // 第四步：调用TDesign的成功回调（传递返回数据和包装文件对象）
+        if (globalOnSuccess) {
+          globalOnSuccess(res.data, wrappedFile);
+        }
+
+        // 单个文件上传成功提示
+        if (fileList.length === 1) {
+          uploadTip.value = `文件${originalName || fileName}上传成功`;
+          uploadTipType.value = 'success';
+        }
+      } else {
+        throw new Error(res.msg || '接口返回异常');
+      }
+    } catch (error) {
+      console.error(`文件${fileName}上传失败：`, error);
+      // 调用TDesign的失败回调
+      if (globalOnError) {
+        globalOnError(error, wrappedFile);
+      }
+      
+      // 单个文件上传失败提示
+      uploadTip.value = `文件${fileName}上传失败：${error.message || '网络异常'}`;
+      uploadTipType.value = 'error';
+    }
+  }
+
+  // 多文件上传完成后的统一提示
+  if (fileList.length > 1) {
+    const successCount = uploadedFiles.value.length;
+    if (successCount === fileList.length) {
+      uploadTip.value = `全部${fileList.length}个文件上传成功`;
+      uploadTipType.value = 'success';
+    } else if (successCount > 0) {
+      uploadTip.value = `仅${successCount}个文件上传成功，其余文件上传失败`;
+      uploadTipType.value = 'error';
+    } else {
+      uploadTip.value = `全部${fileList.length}个文件上传失败`;
+      uploadTipType.value = 'error';
+    }
+  }
+
+  isUploading.value = false;
+  // 3秒后清除提示
+  setTimeout(() => {
+    uploadTip.value = '';
+  }, 3000);
+};
+
+// 付款凭证自定义上传请求
+const customPayVoucherUploadRequest = async (options) => {
+  let fileList = [];
+  let globalOnSuccess, globalOnError;
+
+  if (options && options.raw && options.status) {
+    fileList = [options];
+    globalOnSuccess = options.onSuccess;
+    globalOnError = options.onError;
+  } else if (Array.isArray(options)) {
+    fileList = options;
+    globalOnSuccess = options[0]?.onSuccess;
+    globalOnError = options[0]?.onError;
+  }
+
+  if (fileList.length === 0) return;
+  isPayVoucherUploading.value = true;
+
+  for (const wrappedFile of fileList) {
+    const nativeFile = wrappedFile.raw;
+    const fileName = wrappedFile.name || nativeFile.name;
+    try {
+      payVoucherTip.value = `正在上传${fileName}...`;
+      payVoucherTipType.value = '';
+
+      const res = await uploadFile({ file: nativeFile });
+      if (res.code === 200 && res.data) {
+        const { ossId, originalName, name, url } = res.data;
+        const fileInfo = {
+          ossId,
+          originalName: originalName || name || fileName,
+          name,
+          url,
+          file: nativeFile,
+          wrappedFile
+        };
+        uploadedPayVoucherFiles.value = [fileInfo]; // 单文件覆盖
+        formData.pay.payVoucherId = ossId;
+        formData.pay.payVoucherName = originalName || fileName;
+
+        if (globalOnSuccess) {
+          globalOnSuccess(res.data, wrappedFile);
+        }
+        payVoucherTip.value = `付款凭证${originalName || fileName}上传成功`;
+        payVoucherTipType.value = 'success';
+      } else {
+        throw new Error(res.msg || '接口返回异常');
+      }
+    } catch (error) {
+      console.error(`付款凭证${fileName}上传失败：`, error);
+      if (globalOnError) {
+        globalOnError(error, wrappedFile);
+      }
+      payVoucherTip.value = `付款凭证${fileName}上传失败：${error.message}`;
+      payVoucherTipType.value = 'error';
+    }
+  }
+
+  isPayVoucherUploading.value = false;
+  setTimeout(() => {
+    payVoucherTip.value = '';
+  }, 3000);
+};
+
+// TDesign Upload - 合同上传成功回调
+const handleUploadSuccess = (response, file) => {
+  tips.value = '';
+  console.log('文件上传成功：', file.name, response);
+};
+
+// 付款凭证上传成功回调
+const handlePayVoucherUploadSuccess = (response, file) => {
+  console.log('付款凭证上传成功：', file.name, response);
+};
+
+// 修复上传失败回调（适配TDesign的包装对象）
+const handleUploadFail = (failInfo) => {
+  let errorMsg = '';
+  // 处理包装后的文件失败信息
+  if (failInfo?.file?.raw) {
+    // 单个文件失败
+    const fileName = failInfo.file.name || failInfo.file.raw.name;
+    errorMsg = `文件 ${fileName} 上传失败：${failInfo.error?.message || '未知错误'}`;
+    MessagePlugin.error(errorMsg);
+  } else if (Array.isArray(failInfo)) {
+    // 多文件失败
+    failInfo.forEach(item => {
+      const fileName = item.file?.name || item.file?.raw?.name;
+      MessagePlugin.error(`文件 ${fileName} 上传失败：${item.error?.message || '未知错误'}`);
+    });
+    errorMsg = '部分文件上传失败，请查看详情';
+  } else {
+    errorMsg = '文件上传失败：未知错误';
+    MessagePlugin.error(errorMsg);
+  }
+  uploadTip.value = errorMsg;
+  uploadTipType.value = 'error';
+  setTimeout(() => {
+    uploadTip.value = '';
+  }, 3000);
+};
+
+// 删除已上传合同文件
+const deleteFile = (index) => {
+  const deletedFile = uploadedFiles.value.splice(index, 1)[0];
+  // 从表单中移除对应的ossId
+  formData.contract.attachmentIds = formData.contract.attachmentIds.filter(
+    id => id !== deletedFile.ossId
+  );
+  uploadTip.value = `已删除文件${deletedFile.originalName}`;
+  uploadTipType.value = 'success';
+  setTimeout(() => {
+    uploadTip.value = '';
+  }, 3000);
+};
+
+// 删除付款凭证文件
+const deletePayVoucherFile = (index) => {
+  const deletedFile = uploadedPayVoucherFiles.value.splice(index, 1)[0];
+  if (deletedFile.ossId === formData.pay.payVoucherId) {
+    formData.pay.payVoucherId = null;
+    formData.pay.payVoucherName = '';
+  }
+  payVoucherTip.value = `已删除付款凭证${deletedFile.originalName}`;
+  payVoucherTipType.value = 'success';
+  setTimeout(() => {
+    payVoucherTip.value = '';
+  }, 3000);
+};
+
+// 格式化规格JSON为字符串
+const formatSpecJson = (specJson) => {
+  try {
+    const spec = JSON.parse(specJson);
+    return Object.entries(spec).map(([k, v]) => `${k}:${v}`).join('; ');
+  } catch (error) {
+    return '自定义规格';
+  }
+};
+
+// 收货地址展开 - 打开地址选择弹窗
+const toggleExpandAddresses = async () => {
+  await getAddressListData(); // 获取地址列表
+  showAddressModal.value = true; // 打开弹窗
+};
+
+// 确认选择收货地址
+const confirmAddressSelect = () => {
+  if (!selectedAddressId.value) return;
+  // 查找选中的地址
+  const selectedAddress = addressList.value.find(item => item.id === selectedAddressId.value);
+  if (selectedAddress) {
+    // 更新表单地址信息
+    formData.address.name = selectedAddress.realName;
+    formData.address.phone = selectedAddress.phone;
+    formData.address.detail = `${selectedAddress.province} ${selectedAddress.city} ${selectedAddress.district} ${selectedAddress.street} ${selectedAddress.detail}`;
+    formData.address.note = selectedAddress.requirement || '';
+    formData.address.addressId = selectedAddress.id;
+    // 关闭弹窗
+    showAddressModal.value = false;
+    // 提示
+    MessagePlugin.success('已选择收货地址');
+  }
 };
 
 // 步骤切换：下一步
 const toNextStep = () => {
-  // 步骤3必填项校验
-  if (currentStep.value === 3) {
-    if (!formData.address.name || !formData.address.phone || !formData.address.detail) {
-      alert('请填写收货地址必填项');
+  // 步骤1校验
+  if (currentStep.value === 1) {
+    if (!certInfo.value) {
+      MessagePlugin.error('请选择有效的下单主体');
       return;
     }
+  }
+  // 步骤2校验：需要合同时必须上传附件
+  if (currentStep.value === 2 && formData.contract.type === 'need' && uploadedFiles.value.length === 0) {
+    MessagePlugin.error('选择需要合同后，必须上传盖章后的合同文件');
+    return;
+  }
+  // 步骤3校验
+  if (currentStep.value === 3) {
+    if (!formData.address.name || !formData.address.phone || !formData.address.detail) {
+      MessagePlugin.error('请填写收货地址必填项');
+      return;
+    }
+  }
+  // 步骤4校验：立即付款时必须上传付款凭证
+  if (currentStep.value === 4 && formData.pay.type === 'immediate' && !formData.pay.payVoucherId) {
+    MessagePlugin.error('立即付款需要上传付款凭证');
+    return;
   }
   if (currentStep.value < 5) currentStep.value++;
 };
@@ -607,17 +1459,275 @@ const goToCart = () => {
   router.push('/cart');
 };
 
-// 提交订单（获取全步骤数据）
-const submitOrder = () => {
-  console.log('提交的订单数据：', formData);
-  console.log('订单商品：', orderGoods.value);
-  alert('订单提交成功！');
-  // 提交后跳转订单列表页（需配置路由）
-  router.push('/order-list');
+// 构造订单提交数据（适配新接口规范）
+const buildSubmitData = () => {
+  // 付款方式映射：0立即付款 1账期付款 2授信额度
+  const payTypeMap = { immediate: 0, installment: 1, credit: 2 };
+  return {
+    certId: formData.subject.certId, // 认证ID
+    contractRequired: formData.contract.type === 'need', // 是否需要合同
+    contract: formData.contract.attachmentIds.length > 0 ? formData.contract.attachmentIds[0] : null, // 合同ID
+    contractName: uploadedFiles.value.length > 0 ? uploadedFiles.value[0].originalName : null, // 合同名称
+    addressId: formData.address.addressId, // 收货地址ID
+    requirement: formData.address.note, // 特殊要求
+    payType: payTypeMap[formData.pay.type], // 付款方式
+    payVoucher: formData.pay.payVoucherId, // 付款凭证ID
+    payVoucherName: formData.pay.payVoucherName, // 付款凭证名称
+    invoiceRequired: formData.other.invoiceType === 'need', // 是否需要发票
+    invoiceAmount: formData.other.invoiceType === 'need' ? payAmount.value : null, // 开票金额
+    invoiceDetails: formData.other.invoiceInfo, // 开票明细
+    invoiceRequirement: formData.other.paymentSummary, // 开票要求
+    orderDetailList: orderGoods.value.map(item => ({ // 订单商品列表
+      cartId: item.cartId,
+      productId: item.productId,
+      productImage: item.productImage, // 注意：接口要求为图片ID，需根据实际调整
+      productName: item.productName,
+      specType: item.specType,
+      skuId: item.skuId,
+      singleSpec: item.singleSpec,
+      specJson: item.specJson,
+      productPrice: item.productPrice,
+      payNum: item.payNum,
+      totalPrice: item.totalPrice
+    })),
+    totalNum: totalNum.value, // 商品总数量
+    totalAmount: totalAmount.value, // 商品总金额
+    payAmount: payAmount.value, // 结算金额
+    salePerson: formData.other.contractRemark, // 业务员（可根据实际调整）
+    orderMessage: formData.other.orderRemark // 订单留言
+  };
+};
+
+// 提交订单
+const submitOrder = async () => {
+  try {
+    isLoading.value = true;
+    const submitData = buildSubmitData();
+    const res = await orderApi.submitOrder(submitData);
+    if (res.code === 200) {
+      MessagePlugin.success('订单提交成功！');
+      router.push('/order-list');
+    } else {
+      MessagePlugin.error('订单提交失败：' + res.msg);
+    }
+  } catch (error) {
+    console.error('提交订单失败：', error);
+    MessagePlugin.error('订单提交失败，请重试');
+  } finally {
+    isLoading.value = false;
+  }
 };
 </script>
 
+
 <style scoped>
+/* 新增收货地址弹窗样式 */
+.address-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.address-modal {
+  width: 600px;
+  background: #FFFFFF;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+.address-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.address-item {
+  padding: 16px;
+  border: 1px solid #ECEEF2;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.address-item.active {
+  border-color: #3799AE;
+  background: #F1F9FB;
+}
+.address-name-phone {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.address-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #272727;
+}
+.address-phone {
+  font-size: 14px;
+  color: #838486;
+}
+.address-default {
+  font-size: 12px;
+  color: #FFFFFF;
+  background: #3799AE;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+.address-detail {
+  font-size: 14px;
+  color: #272727;
+  margin-bottom: 4px;
+}
+.address-requirement {
+  font-size: 12px;
+  color: #838486;
+}
+.no-address {
+  text-align: center;
+  padding: 40px 0;
+  font-size: 14px;
+  color: #838486;
+}
+/* 未认证提示 */
+.no-cert-tip {
+  background: #FEF3F2;
+  border: 1px solid #F72B1C;
+  border-radius: 4px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.warning-icon {
+  width: 20px;
+  height: 20px;
+}
+.warning-text {
+  font-size: 14px;
+  color: #F72B1C;
+}
+.cert-link {
+  color: #3799AE;
+  text-decoration: underline;
+  margin: 0 4px;
+}
+
+/* 企业选择弹窗样式 */
+.enterprise-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.enterprise-modal {
+  width: 500px;
+  background: #FFFFFF;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #ECEEF2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.modal-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #272727;
+  margin: 0;
+}
+.modal-close {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  color: #838486;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal-body {
+  padding: 20px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.enterprise-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.enterprise-item {
+  padding: 12px 16px;
+  border: 1px solid #ECEEF2;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.enterprise-item.active {
+  border-color: #3799AE;
+  background: #F1F9FB;
+}
+.enterprise-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #272727;
+  margin-bottom: 4px;
+}
+.enterprise-code {
+  font-size: 12px;
+  color: #838486;
+}
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #ECEEF2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.btn-confirm {
+  height: 36px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 4px;
+  background: #4FA2B4;
+  color: #FFFFFF;
+  cursor: pointer;
+}
+.btn-confirm:disabled {
+  background: #ECEEF2;
+  cursor: not-allowed;
+}
+
+/* 禁用状态样式 */
+.expand-btn:disabled {
+  color: #C9CDD4;
+  cursor: not-allowed;
+}
+.btn-next:disabled {
+  background: #ECEEF2;
+  cursor: not-allowed;
+}
+
 /* 全局页面样式 */
 .order-submit-page {
   min-height: 100vh;
@@ -1177,8 +2287,8 @@ const submitOrder = () => {
   margin-left: 4px;
 }
 .form-desc {
-  font-size: 12px;
-  color: #838486;
+  font-size: 14px;
+  color: #1E293B;
   margin: 8px 0;
   display: flex;
   align-items: center;

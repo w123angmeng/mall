@@ -71,8 +71,9 @@
             placeholder="搜索"
             class="search-input"
             :class="{ focused: isSearchFocused }"
-            @focus="isSearchFocused = true"
+            @focus="handleSearchFocus"
             @blur="hideSearchPopup"
+            @keyup.enter="handleSearch"
           />
           <button class="search-btn" @click="handleSearch">搜索</button>
 
@@ -81,21 +82,43 @@
             <div class="popup-section">
               <div class="section-header">
                 <span class="section-title">最近搜索</span>
-                <button class="delete-btn" @click="clearRecentSearch">删除</button>
+                <button 
+                  class="delete-btn" 
+                  @click="clearRecentSearch"
+                  :disabled="!recentSearch.length || isDeleting"
+                >
+                  {{ isDeleting ? '删除中...' : '删除' }}
+                </button>
               </div>
-              <div class="tag-group">
-                <span class="tag-item" v-for="item in recentSearch" :key="item">{{ item }}</span>
+              <div class="tag-group" v-if="recentSearch.length">
+                <!-- 点击最近搜索标签触发跳转 -->
+                <span 
+                  class="tag-item" 
+                  v-for="item in recentSearch" 
+                  :key="item"
+                  @click="handleTagClick(item)"
+                >
+                  {{ item }}
+                </span>
               </div>
+              <div class="empty-tip" v-else>暂无最近搜索记录</div>
             </div>
             <div class="popup-section">
               <div class="section-header">
                 <span class="section-title">推荐搜索</span>
               </div>
-              <div class="tag-group">
-                <span class="tag-item" v-for="(item, idx) in recommendSearch" :key="idx">
+              <div class="tag-group" v-if="recommendSearch.length">
+                <!-- 点击推荐搜索标签触发跳转 -->
+                <span 
+                  class="tag-item" 
+                  v-for="(item, idx) in recommendSearch" 
+                  :key="idx"
+                  @click="handleTagClick(item)"
+                >
                   <i class="search-icon">🔍</i>{{ item }}
                 </span>
               </div>
+              <div class="empty-tip" v-else>暂无推荐搜索</div>
             </div>
           </div>
         </div>
@@ -105,15 +128,19 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { useUserStore } from '@/stores/user'; // 导入用户Store
+import { useUserStore } from '@/stores/user';
+import { getGoodApi } from '@/apis/good';
+import { MessagePlugin } from 'tdesign-vue-next';
 
 // 获取路由对象
 const route = useRoute();
 const router = useRouter();
 // 初始化用户Store
 const userStore = useUserStore();
+// 初始化商品API
+const goodApi = getGoodApi();
 
 const searchKeyword = ref('');
 
@@ -122,6 +149,16 @@ const handleSearch = () => {
   if (searchKeyword.value.trim()) {
     router.push({ path: '/search', query: { keyword: searchKeyword.value } });
   }
+};
+
+// 新增：点击搜索标签（最近/推荐）触发跳转
+const handleTagClick = (keyword) => {
+  // 填充关键词到搜索框
+  searchKeyword.value = keyword;
+  // 跳转到搜索页
+  router.push({ path: '/search', query: { keyword } });
+  // 隐藏搜索弹窗
+  isSearchFocused.value = false;
 };
 
 // 1. 左侧导航菜单数组
@@ -156,42 +193,113 @@ const isMenuActive = (path) => {
 };
 
 // 5. 昵称脱敏格式化（修正后的核心逻辑）
-// 规则：
-// - 长度 <= 4位：仅最后一位替换成*
-// - 长度 > 4位：前4位 + ***
 const formatNickname = (nickname) => {
   if (!nickname) return '未设置';
   
   const len = nickname.length;
-  // 规则1：长度 <= 4位，仅最后一位替换为*
   if (len <= 4) {
-    // 长度为1时直接返回*
     if (len === 1) {
       return '*';
     }
-    // 长度>1时，前n-1位 + *
     return `${nickname.substring(0, len - 1)}*`;
   }
-  // 规则2：长度 > 4位，前4位 + ***
   return `${nickname.substring(0, 4)}***`;
 };
 
 // 搜索相关逻辑
 const isSearchFocused = ref(false);
-const recentSearch = ref(['商品01', '商品02', '商品03']);
-const recommendSearch = ref(Array(14).fill('热搜商品01'));
+const recentSearch = ref([]); // 最近搜索（从接口获取）
+const recommendSearch = ref([]); // 推荐搜索（从接口获取）
+const isDeleting = ref(false); // 删除加载状态
+const isLoadingSearch = ref(false); // 搜索数据加载状态
 
+// 隐藏搜索弹窗
 const hideSearchPopup = () => {
   setTimeout(() => { isSearchFocused.value = false; }, 200);
 };
-const clearRecentSearch = () => { recentSearch.value = []; };
+
+// 获取最近搜索记录
+const getRecentSearch = async () => {
+  try {
+    isLoadingSearch.value = true;
+    const res = await goodApi.getRecentSearchKeywords();
+    if (res.code === 200 && Array.isArray(res.data)) {
+      recentSearch.value = res.data;
+    } else {
+      recentSearch.value = ['商品01', '商品02', '商品03']; // 兜底数据
+    }
+  } catch (err) {
+    console.error('获取最近搜索失败：', err);
+    recentSearch.value = ['商品01', '商品02', '商品03']; // 兜底数据
+    MessagePlugin.warning('获取最近搜索记录失败，显示默认数据');
+  } finally {
+    isLoadingSearch.value = false;
+  }
+};
+
+// 获取推荐搜索分类
+const getRecommendSearch = async () => {
+  try {
+    const res = await goodApi.getRecommendCategories();
+    if (res.code === 200 && Array.isArray(res.data)) {
+      // 若接口返回分类名称数组，直接使用；若返回对象数组，取name/title字段
+      recommendSearch.value = res.data.map(item => {
+        if (typeof item === 'object') {
+          return item.categoryName || item.title || item.name;
+        }
+        return item;
+      });
+    } else {
+      recommendSearch.value = Array(14).fill('热搜商品01'); // 兜底数据
+    }
+  } catch (err) {
+    console.error('获取推荐搜索失败：', err);
+    recommendSearch.value = Array(14).fill('热搜商品01'); // 兜底数据
+    MessagePlugin.warning('获取推荐搜索失败，显示默认数据');
+  }
+};
+
+// 搜索框聚焦时加载数据
+const handleSearchFocus = async () => {
+  isSearchFocused.value = true;
+  // 仅首次聚焦时加载数据，避免重复请求
+  if (recentSearch.value.length === 0) {
+    await getRecentSearch();
+  }
+  if (recommendSearch.value.length === 0) {
+    await getRecommendSearch();
+  }
+};
+
+// 清空最近搜索
+const clearRecentSearch = async () => {
+  try {
+    isDeleting.value = true;
+    const res = await goodApi.deleteSearchRecord();
+    if (res.code === 200) {
+      recentSearch.value = [];
+      MessagePlugin.success('清空最近搜索成功');
+    } else {
+      MessagePlugin.error(res.msg || '清空最近搜索失败');
+    }
+  } catch (err) {
+    console.error('清空最近搜索失败：', err);
+    MessagePlugin.error('清空最近搜索失败，请稍后重试');
+  } finally {
+    isDeleting.value = false;
+  }
+};
+
+// 组件挂载时预加载推荐搜索（可选）
+onMounted(async () => {
+  await getRecommendSearch();
+});
 </script>
 
 <style lang="scss" scoped>
 /* 顶部导航样式 */
 .top-nav-bar {
   background-color: #ffffff;
-  // border-bottom: 1px solid #eee;
   padding: 8px 0;
 
   .top-nav-container {
@@ -215,12 +323,8 @@ const clearRecentSearch = () => { recentSearch.value = []; };
         gap: 4px;
         .cart-icon { font-size: 16px; padding-right: 4px;}
       }
-      // 昵称样式
       &.nickname-item {
-        // cursor: default;
-        // color: #3799AE;
-        // font-weight: 500;
-		&.active, &:hover { color: #666; }
+        &.active, &:hover { color: #666; }
       }
     }
   }
@@ -229,7 +333,6 @@ const clearRecentSearch = () => { recentSearch.value = []; };
 /* Logo+搜索区样式 */
 .logo-search-bar {
   padding: 15px 0;
-  // border-bottom: 1px solid #eee;
   background-color: var(--theme-bg);
 
   .logo-search-container {
@@ -258,14 +361,13 @@ const clearRecentSearch = () => { recentSearch.value = []; };
         border: 1px solid #FFFFFF;
         border-radius: 4px;
         outline: none;
-		background-color: #FFFFFF !important;
+        background-color: #FFFFFF !important;
         &:focus {
-            background-color: #FFFFFF !important;
-            // border-color: #3799AE;
+          background-color: #FFFFFF !important;
         }
-		&::placeholder {
-			color: #A1A1A2;
-		}
+        &::placeholder {
+          color: #A1A1A2;
+        }
       }
 
       .search-btn {
@@ -291,7 +393,7 @@ const clearRecentSearch = () => { recentSearch.value = []; };
         border: 1px solid #ECEEF2;
         padding: 15px;
         z-index: 99;
-		border-radius: 6px;
+        border-radius: 6px;
 
         .popup-section {
           margin-bottom: 15px;
@@ -308,6 +410,10 @@ const clearRecentSearch = () => { recentSearch.value = []; };
               font-weight: normal;
               line-height: 14px;
               cursor: pointer;
+              &:disabled {
+                color: #ccc;
+                cursor: not-allowed;
+              }
             }
           }
 
@@ -337,6 +443,13 @@ const clearRecentSearch = () => { recentSearch.value = []; };
                 color: #3799AE;
               }
             }
+          }
+
+          .empty-tip {
+            font-size: 12px;
+            color: #999;
+            padding: 10px 0;
+            text-align: center;
           }
         }
       }

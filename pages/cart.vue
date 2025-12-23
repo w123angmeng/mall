@@ -110,6 +110,7 @@
         fromPage="cart" 
         relateKey="" 
         :goodsList="guessGoods"
+        v-if="guessGoods.length"
       />
     </div>
 
@@ -126,44 +127,23 @@ import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next';
 import Header from '@/components/common/Header.vue';
 import Footer from '@/components/common/Footer.vue';
 import GuessYouLike from '@/components/GuessYouLike.vue';
-// 参考user.js的调用方式，导入getCartApi
+// 参考user.js的调用方式，导入getCartApi和getGoodApi
 import { getCartApi } from '@/apis/cart';
+import { getGoodApi } from '@/apis/good';
 
 const router = useRouter();
-// 核心：在setup函数内初始化cartApi（确保Nuxt上下文）
+// 核心：在setup函数内初始化API（确保Nuxt上下文）
 const cartApi = getCartApi();
+const goodApi = getGoodApi();
 
 // 购物车商品数据
 const cartList = ref([]);
 // 全选状态
 const isAllChecked = ref(false);
 // 猜您喜欢商品数据
-const guessGoods = ref([
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  },
-  {
-    img: '/images/product.png',
-    name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
-    price: '129',
-    originalPrice: '299'
-  }
-]);
+const guessGoods = ref([]);
+// 猜你喜欢加载状态
+const isGuessLoading = ref(false);
 
 // 加载购物车列表（调用方式参考user.js）
 const loadCartList = async () => {
@@ -186,6 +166,61 @@ const loadCartList = async () => {
     console.error('获取购物车列表异常：', error);
     MessagePlugin.error('获取购物车失败，请稍后重试');
     cartList.value = [];
+  }
+};
+
+// 加载猜你喜欢商品列表（对接good.js接口）
+const loadGuessYouLike = async () => {
+  if (isGuessLoading.value) return;
+  isGuessLoading.value = true;
+  try {
+    // 调用猜你喜欢接口
+    const res = await goodApi.getRecommendProducts();
+    if (res.code === 200 && Array.isArray(res.data)) {
+      // 格式转换：适配GuessYouLike组件的字段
+      guessGoods.value = res.data.map(item => ({
+        img: item.image || item.firstImage || '/images/product.png',
+        name: item.productName || item.name || '默认商品名称',
+        price: item.salePrice || item.price || '0',
+        originalPrice: item.strikePrice || item.originalPrice || '0',
+        id: item.id || item.productId // 用于跳转详情页
+      })).slice(0, 4); // 最多展示4个
+    } else {
+      // 接口返回异常时使用兜底数据
+      guessGoods.value = [
+        {
+          img: '/images/product.png',
+          name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
+          price: '129',
+          originalPrice: '299'
+        },
+        {
+          img: '/images/product.png',
+          name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
+          price: '129',
+          originalPrice: '299'
+        }
+      ];
+    }
+  } catch (error) {
+    console.error('获取猜你喜欢商品失败：', error);
+    // 接口请求失败时使用兜底数据
+    guessGoods.value = [
+      {
+        img: '/images/product.png',
+        name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
+        price: '129',
+        originalPrice: '299'
+      },
+      {
+        img: '/images/product.png',
+        name: 'MX芳纶系列滤袋 MX芳纶系列滤袋',
+        price: '129',
+        originalPrice: '299'
+      }
+    ];
+  } finally {
+    isGuessLoading.value = false;
   }
 };
 
@@ -341,9 +376,13 @@ const goToHome = () => {
   router.push('/');
 };
 
-// 页面挂载时加载购物车数据
-onMounted(() => {
-  loadCartList();
+// 页面挂载时加载数据
+onMounted(async () => {
+  // 并行加载购物车和猜你喜欢数据，提升页面加载速度
+  await Promise.all([
+    loadCartList(),
+    loadGuessYouLike()
+  ]);
 });
 </script>
 

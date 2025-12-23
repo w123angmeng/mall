@@ -7,7 +7,6 @@ import { useRequest } from '@/composables/useRequest';
  * @param {string|number} params.parentId - 父级区域ID
  */
 export const getAreaListByParentId = async (params) => {
-  // ✅ Initialize useRequest inside function (Nuxt context safe)
   const { get } = useRequest();
   return await get('/area/list', params);
 };

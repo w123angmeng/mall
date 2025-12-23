@@ -2,20 +2,27 @@
   <div class="guess-you-like">
     <div class="section-title">猜您喜欢</div>
     <div class="goods-list">
-      <div class="goods-item" v-for="(goods, idx) in goodsList" :key="idx">
+      <!-- 添加点击事件，跳转到商品详情页 -->
+      <div 
+        class="goods-item" 
+        v-for="(goods, idx) in goodsList" 
+        :key="goods.id || idx"
+        @click="goToGoodsDetail(goods)"
+        :class="{ disabled: !goods.id && !goods.productId }"
+      >
         <!-- 1. 统一图片样式：自适应正方形 -->
-        <img :src="goods.img" alt="商品图" class="goods-img">
+        <img :src="goods.img || goods.firstImage || '/images/product.png'" alt="商品图" class="goods-img">
         <!-- 2. 商品名称：两行省略（和商品卡片样式统一） -->
-        <div class="goods-name">{{ goods.name }}</div>
+        <div class="goods-name">{{ goods.name || goods.productName || '默认商品名称' }}</div>
         <!-- 3. 价格区域：拆分符号/数字，统一样式 -->
         <div class="price-area">
           <span class="current-price">
             <span class="price-sign">¥</span>
-            <span class="price-num">{{ goods.price }}</span>
+            <span class="price-num">{{ goods.price || goods.salePrice || '0' }}</span>
           </span>
-          <span class="original-price">
+          <span class="original-price" v-if="goods.originalPrice || goods.strikePrice">
             <span class="original-sign">¥</span>
-            <span class="original-num">{{ goods.originalPrice }}</span>
+            <span class="original-num">{{ goods.originalPrice || goods.strikePrice || '0' }}</span>
           </span>
         </div>
       </div>
@@ -24,12 +31,17 @@
 </template>
 
 <script setup>
+import { useRouter } from '#app';
+import { MessagePlugin } from 'tdesign-vue-next';
+
+const router = useRouter();
+
 const props = defineProps({
-  // 来源页面（搜索页/商品详情页）
+  // 来源页面（搜索页/商品详情页/购物车）
   fromPage: {
     type: String,
     required: true,
-    validator: (val) => ['search', 'goodsDetail'].includes(val)
+    validator: (val) => ['search', 'goodsDetail', 'cart'].includes(val) // 新增cart来源
   },
   // 关联关键字/商品ID（用于请求推荐）
   relateKey: {
@@ -43,6 +55,24 @@ const props = defineProps({
     default: () => []
   }
 });
+
+// 跳转到商品详情页
+const goToGoodsDetail = (goods) => {
+  // 获取商品ID（兼容id和productId字段）
+  const goodsId = goods.id || goods.productId;
+  
+  // 无商品ID时给出提示
+  if (!goodsId) {
+    MessagePlugin.warning('商品信息异常，无法查看详情');
+    return;
+  }
+  
+  // 跳转到商品详情页，携带来源页面参数（用于统计/返回）
+  router.push({
+    path: `/goods-detail/${goodsId}`,
+    query: { from: props.fromPage } // 携带来源页面标识
+  });
+};
 </script>
 
 <style scoped>
@@ -72,6 +102,20 @@ const props = defineProps({
   width: calc(25% - 15px); /* 一行4个，精准计算间距 */
   border-radius: 8px;
   overflow: hidden;
+  cursor: pointer; /* 鼠标悬浮显示手型 */
+  transition: all 0.2s ease; /* 过渡动画 */
+}
+
+/* 商品项悬浮效果 */
+.goods-item:hover:not(.disabled) {
+  transform: translateY(-4px); /* 向上偏移 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* 阴影效果 */
+}
+
+/* 商品信息异常时的样式 */
+.goods-item.disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 /* 1. 图片样式：和商品卡片一致的自适应正方形 */
