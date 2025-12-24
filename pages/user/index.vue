@@ -46,9 +46,12 @@
           </ul>
         </aside>
 
-        <!-- 右侧内容区域 -->
+        <!-- 右侧内容区域：传递路由参数给子组件 -->
         <div class="user-main-content">
-          <component :is="currentComponent" />
+          <component 
+            :is="currentComponent" 
+            v-bind="$route.query"
+          />
         </div>
       </div>
     </main>
@@ -62,9 +65,9 @@
 import Header from '~/components/common/Header.vue';
 import Footer from '~/components/common/Footer.vue';
 import { Breadcrumb, BreadcrumbItem, Message } from 'tdesign-vue-next';
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useUserStore } from '@/stores/user';
-import { navigateTo } from '#app';
+import { useRoute, navigateTo } from '#app';
 
 // 子内容组件
 import AccountManage from '~/components/user/AccountManage.vue';
@@ -74,8 +77,9 @@ import AddressManage from '~/components/user/AddressManage.vue';
 import InvoiceManage from '~/components/user/InvoiceManage.vue';
 import CreditManage from '~/components/user/CreditManage.vue';
 
-// 初始化用户Store
+// 初始化用户Store和路由
 const userStore = useUserStore();
+const route = useRoute();
 
 // 菜单数组
 const menuList = ref([
@@ -87,8 +91,9 @@ const menuList = ref([
   { key: 'credit', name: '授信情况' }
 ]);
 
-// 当前激活菜单
-const activeMenu = ref(menuList.value[0].key);
+// ========== 需求1：默认激活“我的订单”菜单 ==========
+// 优先从路由参数取激活菜单，无则默认order
+const activeMenu = ref(route.query.menu || 'order');
 
 // 组件映射
 const componentMap = {
@@ -101,19 +106,17 @@ const componentMap = {
 };
 
 // 动态组件
-const currentComponent = computed(() => componentMap[activeMenu.value] || AccountManage);
+const currentComponent = computed(() => componentMap[activeMenu.value] || OrderManage);
 
 // ========== 核心：从Store获取用户信息 ==========
 /**
  * 计算用户头像（优先使用Store中的头像，无则使用默认头像）
  */
 const userAvatar = computed(() => {
-  // 1. Store中有头像且有效，使用Store中的头像
   if (userStore.userInfo?.avatar && userStore.userInfo.avatar.trim()) {
     return userStore.userInfo.avatar;
   }
-  // 2. 否则使用默认头像
-  return '/images/user-avatar.png'; // Nuxt中~/会被解析为根目录，直接用/assets更稳定
+  return '/images/user-avatar.png';
 });
 
 /**
@@ -140,14 +143,23 @@ const formatPhone = (phone) => {
   if (!phone) return '未绑定';
   return phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2');
 };
+
 // ========== 辅助方法 ==========
 /**
  * 头像加载失败时的处理（兜底显示默认头像）
  */
 const handleAvatarError = (e) => {
-  // e.target.src = '/images/user-avatar.png';
-  e.target.src = '';
+  e.target.src = '/images/user-avatar.png';
 };
+
+/**
+ * 监听路由参数变化，动态切换菜单（用于需求2的路由跳转）
+ */
+watch(() => route.query.menu, (newMenu) => {
+  if (newMenu) {
+    activeMenu.value = newMenu;
+  }
+}, { immediate: true });
 
 /**
  * 页面挂载时校验登录状态
@@ -168,12 +180,6 @@ onMounted(() => {
     // 已登录但用户信息不完整，尝试重新获取
     if (userStore.isLoggedIn && !userStore.userInfo?.realName && !userStore.phone) {
       Message.info('正在加载用户信息...');
-      // 可扩展：重新调用获取用户信息接口
-      // userStore.initUserInfo({ token: userStore.token }).catch(() => {
-      //   Message.error('用户信息加载失败，请重新登录');
-      //   userStore.logout();
-      //   navigateTo('/login');
-      // });
     }
   }
 });
@@ -357,7 +363,7 @@ onMounted(() => {
 	  	  	    border: none !important;
 	  	  	    box-shadow: none !important;
 	  	  	    background: transparent !important;
-	  	  	  
+	  	  
 	  	  	    .t-input__inner {
 	  	  	      height: 100% !important;
 	  	  	      border: none !important;
@@ -370,6 +376,5 @@ onMounted(() => {
 	  	    }
 	  }
   }
-  
 }
 </style>

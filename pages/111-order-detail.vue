@@ -25,7 +25,6 @@
         <div class="module-header">
           <h3 class="module-title">下单主体</h3>
           <div class="module-actions">
-            <!-- 新增按钮 -->
             <button 
               class="action-btn"
               @mouseenter="toggleBtnIcon('add', true)"
@@ -34,7 +33,6 @@
               <img :src="addBtnIcon" alt="新增" class="btn-icon">
               <span class="btn-text">新增</span>
             </button>
-            <!-- 说明按钮 -->
             <button 
               class="action-btn"
               @mouseenter="toggleBtnIcon('help', true)"
@@ -43,7 +41,6 @@
               <img :src="helpBtnIcon" alt="说明" class="btn-icon">
               <span class="btn-text">说明</span>
             </button>
-            <!-- 查看全部按钮 -->
             <button 
               class="action-btn"
               @mouseenter="toggleBtnIcon('more', true)"

@@ -45,7 +45,7 @@
         <div class="module-header">
           <h3 class="module-title">下单主体</h3>
           <div class="module-actions">
-            <button class="action-btn" @mouseenter="toggleBtnIcon('add', true)" @mouseleave="toggleBtnIcon('add', false)">
+            <!-- <button class="action-btn" @mouseenter="toggleBtnIcon('add', true)" @mouseleave="toggleBtnIcon('add', false)">
               <img :src="addBtnIcon" alt="新增" class="btn-icon">
               <span class="btn-text">新增</span>
             </button>
@@ -56,7 +56,7 @@
             <button class="action-btn" @mouseenter="toggleBtnIcon('more', true)" @mouseleave="toggleBtnIcon('more', false)">
               <span class="btn-text">查看全部</span>
               <img :src="moreBtnIcon" alt="更多" class="btn-icon">
-            </button>
+            </button> -->
           </div>
         </div>
         <div class="module-content">
@@ -68,7 +68,7 @@
             ]"
             v-model="subjectType"
             groupName="subject-type"
-            :disabled="true"
+            :readonly="true"
           />
           <!-- 企业/个人信息展示 -->
           <div class="info-row info-row-warp" v-if="orderDetail.orderInfo?.certType === 1">
@@ -78,8 +78,8 @@
             <span class="info-value">{{ orderDetail.orderInfo?.socialCode || '暂无' }}</span>
             <span class="info-label">法人姓名</span>
             <span class="info-value">{{ orderDetail.orderInfo?.legalName || '暂无' }}</span>
-            <span class="info-label">法人身份证号</span>
-            <span class="info-value">{{ orderDetail.orderInfo?.legalNumber || '暂无' }}</span>
+            <!-- <span class="info-label">法人身份证号</span>
+            <span class="info-value">{{ orderDetail.orderInfo?.legalNumber || '暂无' }}</span> -->
           </div>
           <div class="info-row info-row-warp" v-else>
             <span class="info-label">身份证姓名</span>
@@ -97,7 +97,7 @@
         <div class="module-header">
           <h3 class="module-title">订单合同</h3>
           <div class="module-actions">
-            <button class="action-btn" @mouseenter="toggleBtnIcon('contractAdd', true)" @mouseleave="toggleBtnIcon('contractAdd', false)" @click="handleSupplementContract" v-if="orderDetail.contractRequired && orderDetail.contractStatus !== 3">
+            <!-- <button class="action-btn" @mouseenter="toggleBtnIcon('contractAdd', true)" @mouseleave="toggleBtnIcon('contractAdd', false)" @click="handleSupplementContract" v-if="orderDetail.contractRequired && orderDetail.contractStatus !== 3">
               <img :src="contractAddBtnIcon" alt="新增" class="btn-icon">
               <span class="btn-text">{{ orderDetail.contractStatus === 1 ? '重新上传' : '上传合同' }}</span>
             </button>
@@ -108,7 +108,7 @@
             <button class="action-btn" @mouseenter="toggleBtnIcon('contractMore', true)" @mouseleave="toggleBtnIcon('contractMore', false)">
               <span class="btn-text">查看全部</span>
               <img :src="contractMoreBtnIcon" alt="更多" class="btn-icon">
-            </button>
+            </button> -->
           </div>
         </div>
         <div class="module-content">
@@ -120,7 +120,7 @@
             ]"
             v-model="contractType"
             groupName="contract-type"
-            :disabled="true"
+            :readonly="true"
           />
           <!-- 合同状态展示 -->
           <div class="status-item" v-if="orderDetail.contractRequired">
@@ -147,7 +147,7 @@
       <div class="detail-module" id="receipt-section">
         <div class="module-header">
           <h3 class="module-title">收货地址</h3>
-          <div class="module-actions">
+          <!-- <div class="module-actions">
             <button class="action-btn" @mouseenter="toggleBtnIcon('addressAdd', true)" @mouseleave="toggleBtnIcon('addressAdd', false)">
               <img :src="addressAddBtnIcon" alt="新增" class="btn-icon">
               <span class="btn-text">新增收货地址</span>
@@ -156,7 +156,7 @@
               <span class="btn-text">查看全部</span>
               <img :src="addressMoreBtnIcon" alt="更多" class="btn-icon">
             </button>
-          </div>
+          </div> -->
         </div>
         <div class="module-content">
           <RadioGroupSingle
@@ -166,7 +166,7 @@
             ]"
             v-model="addressType"
             groupName="address-type"
-            :disabled="true"
+            :readonly="true"
           />
           <!-- 地址信息行 -->
           <div class="info-row address-info-row">
@@ -187,14 +187,14 @@
         <div class="module-header">
           <h3 class="module-title">付款方式</h3>
           <div class="module-actions">
-            <button class="action-btn" @mouseenter="toggleBtnIcon('payHelp', true)" @mouseleave="toggleBtnIcon('payHelp', false)">
+            <!-- <button class="action-btn" @mouseenter="toggleBtnIcon('payHelp', true)" @mouseleave="toggleBtnIcon('payHelp', false)">
               <img :src="payHelpBtnIcon" alt="说明" class="btn-icon">
               <span class="btn-text">说明</span>
             </button>
             <button class="action-btn" @mouseenter="toggleBtnIcon('payMore', true)" @mouseleave="toggleBtnIcon('payMore', false)">
               <span class="btn-text">查看全部</span>
               <img :src="payMoreBtnIcon" alt="更多" class="btn-icon">
-            </button>
+            </button> -->
           </div>
         </div>
         <div class="module-content">
@@ -207,7 +207,7 @@
             ]"
             v-model="payType"
             groupName="pay-type"
-            :disabled="true"
+            
           />
           <!-- 付款状态展示 -->
           <div class="status-item">
@@ -250,14 +250,14 @@
         <div class="module-header">
           <h3 class="module-title">发票信息</h3>
           <div class="module-actions">
-            <button class="action-btn" @mouseenter="toggleBtnIcon('invoiceHelp', true)" @mouseleave="toggleBtnIcon('invoiceHelp', false)">
+            <!-- <button class="action-btn" @mouseenter="toggleBtnIcon('invoiceHelp', true)" @mouseleave="toggleBtnIcon('invoiceHelp', false)">
               <img :src="invoiceHelpBtnIcon" alt="说明" class="btn-icon">
               <span class="btn-text">说明</span>
             </button>
             <button class="action-btn" @mouseenter="toggleBtnIcon('invoiceMore', true)" @mouseleave="toggleBtnIcon('invoiceMore', false)">
               <span class="btn-text">查看全部</span>
               <img :src="invoiceMoreBtnIcon" alt="更多" class="btn-icon">
-            </button>
+            </button> -->
           </div>
         </div>
         <div class="module-content">
@@ -269,7 +269,7 @@
             ]"
             v-model="invoiceType"
             groupName="invoice-type"
-            :disabled="true"
+            :readonly="true"
           />
           <!-- 发票状态展示 -->
           <div class="status-item" v-if="orderDetail.invoiceRequired">
@@ -309,10 +309,10 @@
         <div class="module-header">
           <h3 class="module-title">订单商品</h3>
           <div class="module-actions">
-            <button class="action-btn" @mouseenter="toggleBtnIcon('orderMore', true)" @mouseleave="toggleBtnIcon('orderMore', false)">
+            <!-- <button class="action-btn" @mouseenter="toggleBtnIcon('orderMore', true)" @mouseleave="toggleBtnIcon('orderMore', false)">
               <span class="btn-text">查看全部</span>
               <img :src="orderMoreBtnIcon" alt="更多" class="btn-icon">
-            </button>
+            </button> -->
           </div>
         </div>
         <div class="module-content">
