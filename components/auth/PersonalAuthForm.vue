@@ -29,7 +29,7 @@
 		  <div class="upload-tip">图片大小小于10MB</div>
         </div>
         <!-- 身份证背面上传 -->
-        <div class="upload-card back-card">
+        <div class="upload-card">
           <t-upload
             ref="backUploadRef"
             v-model="uploadFiles.back"
@@ -41,7 +41,7 @@
             :on-fail="handleUploadFail"
             theme="custom"
           >
-            <div class="upload-content">
+            <div class="upload-content back-card">
               <img class="upload-img" src="~/assets/images/upload.png" alt="上传图标"/>
               <div class="upload-text">证件反面照片</div>
             </div>
