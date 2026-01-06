@@ -5,7 +5,7 @@
       <div class="form-row mb-md">
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入企业名称
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.enterpriseName"
@@ -14,7 +14,7 @@
         </div>
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入注册资本
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.registeredCapital"
@@ -27,7 +27,7 @@
       <div class="form-row mb-md">
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入统一社会信用代码
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.socialCreditCode"
@@ -36,7 +36,7 @@
         </div>
         <div class="form-item date-item">
           <label class="form-label">
-            <span class="required-mark">*</span>开始日期 — 结束日期
+            <span class="required-mark">*</span>
           </label>
           <div class="date-row">
             <t-date-picker
@@ -60,7 +60,7 @@
       <div class="form-row mb-md">
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入法人姓名
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.legalPersonName"
@@ -69,7 +69,7 @@
         </div>
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入法人身份证号
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.legalPersonId"
@@ -82,7 +82,7 @@
       <div class="form-row mb-md">
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入联系人姓名
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.contactName"
@@ -91,7 +91,7 @@
         </div>
         <div class="form-item">
           <label class="form-label">
-            <span class="required-mark">*</span>请输入联系人手机号
+            <span class="required-mark">*</span>
           </label>
           <t-input
             v-model="form.contactPhone"
@@ -105,7 +105,7 @@
         <label class="form-label upload-label">
           <span class="required-mark">*</span>请上传营业执照
         </label>
-        <div class="upload-card license-card">
+        <div class="upload-card">
           <t-upload
             v-model="uploadFiles.license"
             :request-method="(file) => handleFileUpload(file, 'license')"
@@ -113,21 +113,21 @@
             :accept="'image/jpeg, image/png'"
             list-type="picture-card"
             :show-upload-list="true"
-            theme="image"
+            theme="custom"
           >
-            <div class="upload-content">
+            <div class="upload-content license-card">
               <img src="~/assets/images/upload.png" alt="上传"/>
               <div class="upload-text">营业执照</div>
             </div>
           </t-upload>
+		  <div class="upload-tip">图片大小小于10MB</div>
         </div>
-        <div class="upload-tip">图片大小小于10MB</div>
       </div>
     
       <!-- 产业业务姓名 + 交易意向 -->
       <div class="form-row mb-md">
         <div class="form-item-row">
-          <label class="form-label">请输入对接产业业务姓名</label>
+          <label class="form-label"></label>
           <t-input
             v-model="form.businessName"
             placeholder="请输入对接产业业务姓名"
@@ -136,7 +136,7 @@
       </div>
       <div class="form-row mb-md">
         <div class="form-item-row">
-          <label class="form-label">请输入交易意向</label>
+          <label class="form-label"></label>
           <t-input
             v-model="form.tradeIntention"
             placeholder="请输入交易意向"
@@ -333,35 +333,35 @@ onMounted(() => {
     }
   }
 
-  :deep(.t-upload) {
-    width: 100%;
-    height: 100%;
+  // :deep(.t-upload) {
+  //   width: 100%;
+  //   height: 100%;
     
-    .t-upload-card {
-      width: 170px !important;
-      height: 100px !important;
-    }
+  //   .t-upload-card {
+  //     width: 170px !important;
+  //     height: 100px !important;
+  //   }
     
-    .t-upload-card-img {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover !important;
-    }
-  }
+  //   .t-upload-card-img {
+  //     width: 100% !important;
+  //     height: 100% !important;
+  //     object-fit: cover !important;
+  //   }
+  // }
 
-  :deep(.t-date-picker) {
-    height: 39px;
+  // :deep(.t-date-picker) {
+  //   height: 39px;
 
-    .t-input__inner {
-      height: 100% !important;
-    }
-  }
+  //   .t-input__inner {
+  //     height: 100% !important;
+  //   }
+  // }
 
-  :deep(.t-radio) {
-    font-size: 14px;
-    color: #2F3032;
-    margin-left: 10px;
-  }
+  // :deep(.t-radio) {
+  //   font-size: 14px;
+  //   color: #2F3032;
+  //   margin-left: 10px;
+  // }
 }
 
 .page-title {
@@ -378,6 +378,9 @@ onMounted(() => {
 }
 
 .form-item {
+  display: flex;
+  justify-content: space-between; 
+  align-items: center;
   flex: 0 0 48%;
   margin-bottom: 0 !important;
 }
@@ -388,10 +391,9 @@ onMounted(() => {
 }
 
 .form-label {
-  display: none !important;
+  // display: none !important;
   font-size: 14px;
   color: #2F3032;
-  margin-bottom: 8px;
 }
 
 .upload-label {
@@ -423,42 +425,45 @@ onMounted(() => {
 }
 
 .upload-card {
-  width: 170px;
-  height: 100px;
-  border: 1px dashed #ECEEF2;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  position: relative;
-  background-repeat: no-repeat;
-  background-position: center center;
-  
-  img {
-    width: 20px;
-    height:20px;
-  }
-
-  &.license-card {
-    background-image: url('/_nuxt/assets/images/business-license.png');
-    background-size: cover;
-  }
-
-  &:hover {
-    border-color: #3799AE;
-  }
-
+	.upload-tip {
+	  font-size: 12px;
+	  color: #838486;
+	  margin-top: 10px;
+	}
   .upload-content {
-    width: 170px;
-    height: 98px;
+   width: 170px;
+   height: 100px;
+   border: 1px dashed #ECEEF2;
+   border-radius: 4px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   cursor: pointer;
+   transition: border-color 0.2s;
+   position: relative;
+   background-repeat: no-repeat;
+   background-position: center center;
+   
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding-bottom: 8px;
     background: linear-gradient(to top, rgba(255,255,255,0.8), transparent 60%);
+	
+	img {
+	  width: 20px;
+	  height:20px;
+	}
+	
+	&.license-card {
+	  background-image: url('/_nuxt/assets/images/business-license.png');
+	  background-size: cover;
+	}
+	
+	&:hover {
+	  border-color: #3799AE;
+	}
   }
 }
 
@@ -467,17 +472,11 @@ onMounted(() => {
   color: #838486;
 }
 
-.upload-tip {
-  font-size: 12px;
-  color: #999;
-  margin-top: 0 !important;
-}
-
 .btn-group {
   display: flex;
-  gap: 15px;
+  gap: 20px;
   justify-content: center;
-  margin-top: 10px;
+  margin: 40px 0;
 }
 
 .confirm-btn {

@@ -13,6 +13,8 @@ export default defineNuxtRouteMiddleware((to, from) => {
     '/register', // 注册页
 	'/forgot-password', // 忘记密码
     '/select-auth', // 认证选择页
+	'/verify-personal',
+	'/verify-enterprise',
     '/product/:id', // 商品详情页（示例）
     '/category', // 分类页（示例）
     // 可根据实际需求添加更多白名单路由

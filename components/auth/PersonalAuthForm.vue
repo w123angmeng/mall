@@ -1,13 +1,14 @@
 <template>
   <div class="personal-auth-form">
     <!-- 身份证上传区域 -->
-    <div class="upload-section mb-lg">
+    <div class="upload-section">
       <div class="upload-label">
         <span class="required-mark">*</span>请上传身份证照
       </div>
       <div class="upload-cards">
         <!-- 身份证正面上传 -->
-        <div class="upload-card front-card">
+		
+        <div class="upload-card">
           <t-upload
             ref="frontUploadRef"
             v-model="uploadFiles.front"
@@ -17,13 +18,15 @@
             :show-upload-list="true"
             :request-method="(file) => handleFileUpload(file, 'front')"
             :on-fail="handleUploadFail"
-            theme="image"
+            theme="custom"
           >
-            <div class="upload-content">
-              <img src="~/assets/images/upload.png" alt="上传图标"/>
+            <div class="upload-content front-card">
+              <img class="upload-img" src="~/assets/images/upload.png" alt="上传图标"/>
               <div class="upload-text">证件正面照片</div>
             </div>
+			
           </t-upload>
+		  <div class="upload-tip">图片大小小于10MB</div>
         </div>
         <!-- 身份证背面上传 -->
         <div class="upload-card back-card">
@@ -36,16 +39,15 @@
             :show-upload-list="true"
             :request-method="(file) => handleFileUpload(file, 'back')"
             :on-fail="handleUploadFail"
-            theme="image"
+            theme="custom"
           >
             <div class="upload-content">
-              <img src="~/assets/images/upload.png" alt="上传图标"/>
+              <img class="upload-img" src="~/assets/images/upload.png" alt="上传图标"/>
               <div class="upload-text">证件反面照片</div>
             </div>
           </t-upload>
         </div>
       </div>
-      <div class="upload-tip text-center">图片大小小于10MB</div>
     </div>
     
     <!-- 表单区域 -->
@@ -414,40 +416,68 @@ watch(() => form.cardLongTerm, (val) => {
 
 <style lang="scss" scoped>
 .personal-auth-form {
+	:deep(.t-input) {
+	    height: 40px !important;
+	    box-sizing: border-box !important;
+	
+	    .t-input__inner {
+	      height: 100% !important;
+	      line-height: 40px !important;
+	      padding: 0 15px !important;
+	      
+	      &:focus {
+	        border-color: inherit !important;
+	        outline: none !important;
+	        box-shadow: none !important;
+	      }
+	    }
+	  }
+	
+	  :deep(.t-date-range-picker) {
+	    height: 40px !important;
+		.t-input {
+			height: 100% !important;
+		}
+	    .t-range-input {
+	      height: 100% !important;
+	      &:focus {
+	        border-color: inherit !important;
+	        outline: none !important;
+	        box-shadow: none !important;
+	      }
+	    }
+	  }
+	
+	  :deep(.t-range-input__inner) {
+	    height: 100% !important;
+	    .t-input__inner {
+	      height: 100% !important;
+	      &:focus {
+	        border-color: inherit !important;
+	        outline: none !important;
+	        box-shadow: none !important;
+	      }
+	    }
+	  }
   :deep(.t-input) {
-    height: 39px !important;
-    border: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
+    // height: 40px !important;
+    // border: none !important;
+    // box-shadow: none !important;
+    // background: transparent !important;
 
-    .t-input__inner {
-      height: 100% !important;
-      border: 1px solid #ECEEF2 !important;
-      border-radius: 4px !important;
-      outline: none !important;
-      padding: 0 15px !important;
-      font-size: 14px !important;
-    }
-  }
-
-  :deep(.t-upload) {
-    width: 100%;
-    height: 100%;
-    
-    .t-upload-card {
-      width: 120px !important;
-      height: 80px !important;
-    }
-    
-    .t-upload-card-img {
-      width: 100% !important;
-      height: 100% !important;
-      object-fit: cover !important;
-    }
+    // .t-input__inner {
+    //   height: 100% !important;
+    //   border: 1px solid #ECEEF2 !important;
+    //   border-radius: 4px !important;
+    //   outline: none !important;
+    //   padding: 0 15px !important;
+    //   font-size: 14px !important;
+    // }
   }
 
   :deep(.t-date-range-picker) {
-    width: 220px;
+    // width: 220px;
+	flex: 1;
     .t-input__inner {
       height: 39px !important;
     }
@@ -466,12 +496,15 @@ watch(() => form.cardLongTerm, (val) => {
 }
 
 .upload-section {
-  margin-bottom: 25px;
+  margin-bottom: 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start; 
 }
 
 .upload-label {
   font-size: 14px;
-  color: #2F3032;
+  color: #272727;
   margin-bottom: 12px;
 }
 
@@ -484,62 +517,67 @@ watch(() => form.cardLongTerm, (val) => {
   display: flex;
   gap: 20px;
   justify-content: center;
-  margin-bottom: 8px;
 }
 
 .upload-card {
-  width: 120px;
-  height: 80px;
-  border: 1px dashed #ECEEF2;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  position: relative;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: cover;
-
-  &.front-card {
-    background-image: url('~/assets/images/idcard-front.png');
+  // width: 180px;
+  // height: 100px;
+  
+  .upload-tip {
+    font-size: 12px;
+    color: #838486;
+    margin-top: 10px;
   }
-
-  &.back-card {
-    background-image: url('~/assets/images/idcard-back.png');
-  }
-
-  &:hover {
-    border-color: #3799AE;
-  }
-
   .upload-content {
-    width: 100%;
-    height: 100%;
+    width: 180px;
+    height: 100px;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding-bottom: 8px;
-    background: rgba(255,255,255,0.6);
+    
+	border: 1px dashed #ECEEF2;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: border-color 0.2s;
+	position: relative;
+	background-repeat: no-repeat;
+	background-position: center;
+	background-size: cover;
+	
+	&.front-card {
+	  background-image: url('~/assets/images/idcard-front.png');
+	}
+	
+	&.back-card {
+	  background-image: url('~/assets/images/idcard-back.png');
+	}
+	
+	&:hover {
+	  border-color: #3799AE;
+	}
+	
+	.upload-img {
+		width: 20px;
+		height: 20px;
+		margin-bottom: 16px;
+	}
+	.upload-text {
+	  font-size: 14px;
+	  color: #838486;
+	}
   }
 }
 
-.upload-text {
-  font-size: 14px;
-  color: #838486;
-  margin-top: 4px;
-}
 
-.upload-tip {
-  font-size: 12px;
-  color: #999;
-}
+
 
 .auth-form {
   width: 100%;
-  max-width: 500px;
+  // max-width: 500px;
   margin: 0 auto;
 }
 
@@ -551,13 +589,16 @@ watch(() => form.cardLongTerm, (val) => {
 .date-row {
   display: flex;
   align-items: center;
+  .long-term-radio {
+	  width: 86px;
+  }
 }
 
 .btn-group {
   display: flex;
-  gap: 15px;
+  gap: 20px;
   justify-content: center;
-  margin-top: 20px;
+  margin: 40px auto;
 }
 
 .confirm-btn {
@@ -618,7 +659,7 @@ watch(() => form.cardLongTerm, (val) => {
   }
 }
 
-.mb-lg { margin-bottom: 25px !important; }
+.mb-lg { margin-bottom: 18px !important; }
 .mb-md { margin-bottom: 16px !important; }
 .text-center { text-align: center; }
 </style>
